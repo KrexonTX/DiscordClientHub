@@ -62,7 +62,7 @@ A multi-account Discord self-bot manager with a real-time web control panel. Con
 ### 1. Clone & Install
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/KrexonTX/DiscordClientHub
 cd Discord-Client-Bot
 npm install
 ```
