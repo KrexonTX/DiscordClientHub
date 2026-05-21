@@ -1,6 +1,6 @@
 # Discord Client Bot Hub
 
-A multi-account Discord self-bot manager with a real-time web control panel. Control dozens of user-token bots from a single dashboard — manage voice channels, send DMs, update presence, send friend requests, and more.
+A multi-account Discord self-bot manager with a real-time web control panel. Control dozens of user-token bots from a single dashboard - manage voice channels, send DMs, update presence, send friend requests, and more.
 
 ---
 
@@ -8,19 +8,19 @@ A multi-account Discord self-bot manager with a real-time web control panel. Con
 
 ### 🤖 Multi-Bot Management
 - Run **unlimited** user-token bots from a single Node.js process
-- Add, edit, reload, and unload bots at runtime — no restarts needed
+- Add, edit, reload, and unload bots at runtime - no restarts needed
 - Per-bot settings (notifications, platform, presence) persisted to `config.json`
 
 ### 🎛️ Web Control Panel
 - **Premium dark-mode SaaS UI** with collapsible sidebar navigation
-- **Dashboard** — live bot grid with status, voice state, servers, uptime, and avatar
-- **Command Hub** — mass-execute commands across selected bots with checkbox targeting
-- **Console Log** — full-screen developer terminal with color-coded log levels
-- **Mass Settings** — batch configure notifications, platform, and presence status
-- **App Settings** — toggle notification categories (connection, VC, commands, console)
-- **Trusted Whitelist** — manage authorized users who can DM-control your bots
-- **Filters** — filter bots by Server ID, loaded/unloaded status, or show hidden bots
-- **Toast Notifications** — minimal bottom-right alerts with colored status indicators
+- **Dashboard** - live bot grid with status, voice state, servers, uptime, and avatar
+- **Command Hub** - mass-execute commands across selected bots with checkbox targeting
+- **Console Log** - full-screen developer terminal with color-coded log levels
+- **Mass Settings** - batch configure notifications, platform, and presence status
+- **App Settings** - toggle notification categories (connection, VC, commands, console)
+- **Trusted Whitelist** - manage authorized users who can DM-control your bots
+- **Filters** - filter bots by Server ID, loaded/unloaded status, or show hidden bots
+- **Toast Notifications** - minimal bottom-right alerts with colored status indicators
 
 ### 🔊 Voice Control
 - Join/leave voice channels via web panel or DM commands
@@ -29,11 +29,11 @@ A multi-account Discord self-bot manager with a real-time web control panel. Con
 - Rejoin last channel with one click
 
 ### 📨 Mass Operations
-- **Mass DM** — broadcast messages to a target user from all selected bots
-- **Mass Friend Request** — sequential one-by-one friend requests with staggered delays (1–5s)
-- **Mass Load / Unload** — batch start or stop bots
-- **Mass Presence** — set all bots to Online, Idle, DND, Streaming, or Invisible
-- **Mass Platform** — switch all bots between Desktop, Mobile, Browser, or VR
+- **Mass DM** - broadcast messages to a target user from all selected bots
+- **Mass Friend Request** - sequential one-by-one friend requests with staggered delays (1–5s)
+- **Mass Load / Unload** - batch start or stop bots
+- **Mass Presence** - set all bots to Online, Idle, DND, Streaming, or Invisible
+- **Mass Platform** - switch all bots between Desktop, Mobile, Browser, or VR
 - Auto-delete sent DMs (optional checkbox)
 - Configurable stagger delay range (e.g. `2-5` seconds)
 
@@ -176,7 +176,7 @@ friend request <user_id>
 
 ```
 Discord Client Bot/
-├── index.js              # Main server — bot instances, socket handlers, Discord API
+├── index.js              # Main server - bot instances, socket handlers, Discord API
 ├── config.json           # Bot tokens, owner ID, web password (gitignored)
 ├── trusted_users.json    # Whitelisted user IDs (auto-generated, gitignored)
 ├── package.json          # Dependencies and scripts
@@ -228,7 +228,7 @@ Each bot can impersonate a different Discord client:
 | `browser` | Discord Web (Chrome) | `os: Windows, browser: Chrome` |
 | `vr` | Discord on Quest | `os: Quest, browser: Discord Embedded` |
 
-Changing platform requires a reconnect — the bot will disconnect and re-login with the new properties.
+Changing platform requires a reconnect - the bot will disconnect and re-login with the new properties.
 
 ---
 
@@ -251,7 +251,7 @@ All categories can be individually toggled in **Settings → App Settings**.
 
 - **Change the default password** (`changeme`) before exposing the web panel.
 - **Use a reverse proxy** (nginx/Caddy) with HTTPS if running on a public VPS.
-- Self-botting is against Discord's Terms of Service — use at your own risk.
+- Self-botting is against Discord's Terms of Service - use at your own risk.
 
 ---
 
