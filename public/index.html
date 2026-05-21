@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#08080c" />
+  <meta name="description" content="Discord Bot Control Panel" />
+  <title>Discord Bot Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+
+  <!-- ══════════════ LOGIN OVERLAY ══════════════ -->
+  <div id="loginOverlay" class="login-overlay">
+    <div class="login-bg-orbs">
+      <div class="orb orb-1"></div>
+      <div class="orb orb-2"></div>
+      <div class="orb orb-3"></div>
+    </div>
+    <div class="login-card glass-card" id="loginCard">
+      <div class="login-logo">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+          <rect width="48" height="48" rx="14" fill="#5865F2"/>
+          <path d="M17.5 14C17.5 14 20.5 12 24 12C27.5 12 30.5 14 30.5 14C30.5 14 34 16 34 24C34 28 32 33 30 35C30 35 28 33 26 33C24.5 33 23.5 33 22 33C20 33 18 35 18 35C16 33 14 28 14 24C14 16 17.5 14 17.5 14Z" fill="white" opacity="0.95"/>
+          <circle cx="20" cy="23" r="2.5" fill="#5865F2"/>
+          <circle cx="28" cy="23" r="2.5" fill="#5865F2"/>
+        </svg>
+      </div>
+      <h1 class="login-title">Control Panel</h1>
+      <p class="login-subtitle">Authenticate to access the self-bot hub</p>
+      <div class="login-form">
+        <div class="input-group">
+          <input type="password" id="passwordInput" class="input" placeholder="Enter password" autocomplete="off" />
+          <div class="input-glow"></div>
+        </div>
+        <button id="loginBtn" class="btn btn-primary btn-full">
+          <span class="btn-text">Authenticate</span>
+          <span class="btn-loader" id="loginLoader"></span>
+        </button>
+        <p class="login-error" id="loginError"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════ DASHBOARD WRAPPER ══════════════ -->
+  <div id="dashboard" class="dashboard hidden">
+
+    <!-- ── Left Sidebar Navigation ── -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="brand">
+          <div class="brand-logo-container">
+            <svg width="24" height="24" viewBox="0 0 48 48" fill="none">
+              <rect width="48" height="48" rx="14" fill="#5865F2"/>
+              <path d="M17.5 14C17.5 14 20.5 12 24 12C27.5 12 30.5 14 30.5 14C30.5 14 34 16 34 24C34 28 32 33 30 35C30 35 28 33 26 33C24.5 33 23.5 33 22 33C20 33 18 35 18 35C16 33 14 28 14 24C14 16 17.5 14 17.5 14Z" fill="white"/>
+            </svg>
+          </div>
+          <div class="brand-text">
+            <span class="brand-title">BotHub</span>
+            <span class="brand-subtitle">Discord Self-Bot</span>
+          </div>
+        </div>
+        <button class="btn-sidebar-toggle" id="sidebarToggle" title="Toggle Sidebar">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+      </div>
+
+      <!-- Welcome Profile card -->
+      <div class="sidebar-profile">
+        <div class="profile-details">
+          <div class="profile-welcome">Welcome Back</div>
+          <div class="profile-name">Operator</div>
+          <div class="profile-status" id="panelUserMeta">Syncing bots...</div>
+        </div>
+      </div>
+
+      <!-- Menu links -->
+      <nav class="sidebar-menu">
+        <div class="menu-group">Overview</div>
+        <button class="menu-link active" data-tab="tab-dashboard" data-parent="Overview" data-child="Dashboard">
+          <svg class="menu-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          <span class="menu-text">Dashboard</span>
+        </button>
+        <button class="menu-link" data-tab="tab-console" data-parent="Overview" data-child="Console Log">
+          <svg class="menu-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+          <span class="menu-text">Console Log</span>
+        </button>
+
+        <div class="menu-group">Operations</div>
+        <button class="menu-link" data-tab="tab-commands" data-parent="Operations" data-child="Command Hub">
+          <svg class="menu-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          <span class="menu-text">Command Hub</span>
+        </button>
+
+        <div class="menu-group">Access Control</div>
+        <button class="menu-link" data-tab="tab-trusted" data-parent="Access" data-child="Trusted Whitelist">
+          <svg class="menu-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <span class="menu-text">Trusted Whitelist</span>
+        </button>
+
+        <div class="menu-group">Settings</div>
+        <button class="menu-link" data-tab="tab-mass-settings" data-parent="Settings" data-child="Mass Overrides">
+          <svg class="menu-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+          <span class="menu-text">Mass Settings</span>
+        </button>
+        <button class="menu-link" data-tab="tab-settings" data-parent="Settings" data-child="Panel Config">
+          <svg class="menu-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span class="menu-text">App Settings</span>
+        </button>
+      </nav>
+    </aside>
+
+    <!-- ── Main Workspace Content Area ── -->
+    <div class="content-area">
+
+      <!-- content header -->
+      <header class="content-header">
+        <div class="header-breadcrumb">
+          <span class="parent" id="breadParent">Overview</span>
+          <span class="sep">/</span>
+          <span class="child" id="breadChild">Dashboard</span>
+        </div>
+        <div class="header-widgets">
+          <div class="connection-status" id="connectionStatus">
+            <span class="status-dot" id="connectionDot"></span>
+            <span class="status-text" id="connectionText">Connecting…</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Pane Container -->
+      <main class="pane-container">
+
+        <!-- ════════ TAB: DASHBOARD ════════ -->
+        <div id="tab-dashboard" class="tab-pane">
+          <section class="section" id="botsSection">
+            <div class="section-header">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <h2 class="section-title">Connected Bots</h2>
+                <span class="badge" id="botCount">0 bots</span>
+              </div>
+              <div class="filter-group">
+                <input type="text" class="input" id="filterServerId" placeholder="Filter by Server ID..." />
+                <select class="select" id="filterStatus">
+                  <option value="all">🔵 All Bots</option>
+                  <option value="loaded">🟢 Loaded</option>
+                  <option value="unloaded">⚪ Unloaded</option>
+                </select>
+              </div>
+            </div>
+            <div class="bot-grid" id="botGrid">
+              <div class="empty-state" id="botsEmpty">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M8 15s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+                <p>Waiting for bot connections...</p>
+              </div>
+              <!-- Add Bot card template -->
+              <div class="bot-card glass-card add-bot-card" id="addBotCard">
+                <div class="add-bot-inner">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  <span>Add Bot Account</span>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- ════════ TAB: CONSOLE LOG (FULL SCREEN) ════════ -->
+        <div id="tab-console" class="tab-pane hidden">
+          <section class="section terminal-section">
+            <div class="section-header">
+              <h2 class="section-title">Developer Terminal</h2>
+              <div style="display: flex; gap: 10px; align-items: center;">
+                <button class="btn btn-ghost btn-sm" id="clearConsoleBtn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                  Clear Console
+                </button>
+              </div>
+            </div>
+            <div class="console-viewer-full glass-card" id="consoleViewer">
+              <div class="console-entries" id="consoleEntries"></div>
+            </div>
+          </section>
+        </div>
+
+        <!-- ════════ TAB: COMMAND HUB ════════ -->
+        <div id="tab-commands" class="tab-pane hidden">
+          <div class="grid-two-columns">
+            
+            <!-- Left: Targets List -->
+            <section class="section">
+              <div class="section-header">
+                <h2 class="section-title">Target Bots Selection</h2>
+                <div class="target-bots-actions">
+                  <button type="button" class="btn btn-ghost btn-sm" style="color: var(--green); border-color: rgba(87, 242, 135, 0.15); background: rgba(87, 242, 135, 0.04);" id="massLoadBtn">Load Selected</button>
+                  <button type="button" class="btn btn-ghost btn-sm btn-danger-ghost" id="massUnloadBtn">Unload Selected</button>
+                </div>
+              </div>
+              <div class="glass-card" style="padding: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                  <p style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.4; margin: 0;">
+                    Check the bot accounts below to direct commands and settings actions.
+                  </p>
+                  <label style="font-size: 0.76rem; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; gap: 6px; user-select: none; white-space: nowrap; margin-left: 12px;">
+                    <input type="checkbox" id="showHiddenBots" style="accent-color: var(--blurple);" />
+                    <span>Show Hidden</span>
+                  </label>
+                </div>
+                <div class="target-bots-widget" id="targetBotsWidget">
+                  <div class="empty-state-sm">No accounts configured</div>
+                </div>
+                <div style="display: flex; gap: 8px; margin-top: 10px;">
+                  <button type="button" class="btn btn-ghost btn-sm" style="flex: 1;" id="selectAllBotsBtn">Select All</button>
+                  <button type="button" class="btn btn-ghost btn-sm" style="flex: 1;" id="deselectAllBotsBtn">Deselect All</button>
+                </div>
+              </div>
+            </section>
+
+            <!-- Right: Commands panel -->
+            <section class="section">
+              <div class="section-header">
+                <h2 class="section-title">Trigger Execution</h2>
+              </div>
+              
+              <!-- Run commands card -->
+              <div class="glass-card" style="padding: 20px; display: flex; flex-direction: column; gap: 14px; margin-bottom: 20px;">
+                <h3 style="font-size: 0.95rem; font-weight: 600; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 8px; margin-bottom: 4px;">Run Console Commands</h3>
+                <div class="input-row">
+                  <input type="text" id="commandInput" class="input" placeholder="e.g. friend request 1234567890..." autocomplete="off" />
+                  <button id="sendCommandBtn" class="btn btn-primary">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                    Send Command
+                  </button>
+                </div>
+                <div class="command-result" id="commandResult"></div>
+              </div>
+
+              <!-- Mass DM card -->
+              <div class="glass-card" style="padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+                <h3 style="font-size: 0.95rem; font-weight: 600; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 8px; margin-bottom: 4px;">Mass DM Broadcast</h3>
+                <div class="input-row" style="display: flex; flex-direction: column; gap: 10px; align-items: stretch;">
+                  <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <label class="input-label" style="margin: 0; font-size: 0.76rem;">Recipient Discord ID</label>
+                    <input type="text" id="massDmUserId" class="input" placeholder="e.g. 84729103984..." autocomplete="off" />
+                  </div>
+                  <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <label class="input-label" style="margin: 0; font-size: 0.76rem;">Message Content</label>
+                    <input type="text" id="massDmMessage" class="input" placeholder="Enter text..." autocomplete="off" />
+                  </div>
+                </div>
+                
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+                  <label style="font-size: 0.8rem; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none;">
+                    <input type="checkbox" id="massDmDeleteCheck" style="accent-color: var(--blurple);" />
+                    <span>Auto-delete messages after sending</span>
+                  </label>
+                  <div style="display: flex; align-items: center; gap: 8px; font-size: 0.8rem;">
+                    <span style="color: var(--text-muted);">Stagger delay (sec):</span>
+                    <input type="text" class="input" id="massDmDelayInput" value="2-5" style="width: 70px; height: 32px; padding: 4px 8px; margin: 0; text-align: center;" placeholder="2-5" />
+                  </div>
+                </div>
+
+                <button id="massDmBtn" class="btn btn-primary" style="margin-top: 6px;">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                  Trigger Message Broadcast
+                </button>
+              </div>
+
+            </section>
+          </div>
+        </div>
+
+        <!-- ════════ TAB: TRUSTED WHITELIST ════════ -->
+        <div id="tab-trusted" class="tab-pane hidden">
+          <section class="section" style="max-width: 600px;">
+            <div class="section-header">
+              <h2 class="section-title">Trusted Access Control</h2>
+            </div>
+            <div class="trusted-panel glass-card" style="padding: 24px;">
+              <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 0.9rem; line-height: 1.5;">
+                Users listed below are whitelist administrators who can run remote console commands and message dispatches directly via DM on any of your running self-bots.
+              </p>
+              <div class="input-row" style="margin-bottom: 20px;">
+                <input type="text" id="addUserInput" class="input" placeholder="Enter Discord User ID" autocomplete="off" />
+                <button id="addUserBtn" class="btn btn-primary">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  Add Whitelist
+                </button>
+              </div>
+              <ul class="trusted-list" id="trustedList">
+                <li class="empty-state-sm">Loading whitelisted accounts...</li>
+              </ul>
+            </div>
+          </section>
+        </div>
+
+        <!-- ════════ TAB: MASS SETTINGS ════════ -->
+        <div id="tab-mass-settings" class="tab-pane hidden">
+          <section class="section">
+            <div class="section-header">
+              <h2 class="section-title">Mass Configuration Overrides</h2>
+            </div>
+            <p style="color: var(--text-secondary); margin-bottom: 4px; font-size: 0.9rem;">
+              Batch updates applied across all <strong>currently selected</strong> bots (via checkboxes in Command Hub).
+            </p>
+
+            <div class="grid-three-columns">
+              
+              <!-- Card 1: Notifications -->
+              <div class="glass-card" style="padding: 20px; display: flex; flex-direction: column; justify-content: space-between; min-height: 230px;">
+                <div>
+                  <h3 style="font-size: 0.95rem; margin-bottom: 16px; color: var(--text-primary); border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 8px; font-weight: 600;">
+                    Voice Notifications
+                  </h3>
+                  <div style="display: flex; flex-direction: column; gap: 14px;">
+                    <div class="setting-row" style="border: none; padding: 0;">
+                      <span class="setting-label" style="font-size: 0.88rem;">Notify on move VC</span>
+                      <label class="toggle">
+                        <input type="checkbox" id="massNotifyOnMove" checked />
+                        <span class="toggle-slider"></span>
+                      </label>
+                    </div>
+                    <div class="setting-row" style="border: none; padding: 0;">
+                      <span class="setting-label" style="font-size: 0.88rem;">Notify on disconnect</span>
+                      <label class="toggle">
+                        <input type="checkbox" id="massNotifyOnDisconnect" checked />
+                        <span class="toggle-slider"></span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" id="applyMassSettingsBtn" style="margin-top: 16px; width: 100%;">
+                  Apply Notifications
+                </button>
+              </div>
+
+              <!-- Card 2: Platform -->
+              <div class="glass-card" style="padding: 20px; display: flex; flex-direction: column; justify-content: space-between; min-height: 230px;">
+                <div>
+                  <h3 style="font-size: 0.95rem; margin-bottom: 16px; color: var(--text-primary); border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 8px; font-weight: 600;">
+                    Client Device Platform
+                  </h3>
+                  <div style="display: flex; flex-direction: column; gap: 14px;">
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                      <label class="input-label" style="margin-top: 0; font-size: 0.78rem;">Platform Type</label>
+                      <select id="massPlatformSelect" class="select" style="margin-top: 0; background: var(--bg-tertiary); height: 38px;">
+                        <option value="desktop">🖥️ Desktop (Windows)</option>
+                        <option value="mobile">📱 Mobile (iOS)</option>
+                        <option value="browser">🌐 Browser (Chrome)</option>
+                        <option value="vr">🥽 VR (Quest)</option>
+                      </select>
+                    </div>
+                    <p style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.4; margin: 0;">
+                      ⚠️ Applying reconnects the bots to apply changes.
+                    </p>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" id="applyMassPlatformBtn" style="margin-top: 16px; width: 100%;">
+                  Apply & Restart Bots
+                </button>
+              </div>
+
+              <!-- Card 3: Presence Status -->
+              <div class="glass-card" style="padding: 20px; display: flex; flex-direction: column; justify-content: space-between; min-height: 230px;">
+                <div>
+                  <h3 style="font-size: 0.95rem; margin-bottom: 16px; color: var(--text-primary); border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 8px; font-weight: 600;">
+                    Discord Presence
+                  </h3>
+                  <div style="display: flex; flex-direction: column; gap: 14px;">
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                      <label class="input-label" style="margin-top: 0; font-size: 0.78rem;">Presence Type</label>
+                      <select id="massPresenceSelect" class="select" style="margin-top: 0; background: var(--bg-tertiary); height: 38px;">
+                        <option value="online">🟢 Online</option>
+                        <option value="idle">🌙 Idle</option>
+                        <option value="dnd">🔴 Do Not Disturb</option>
+                        <option value="streaming">🟣 Streaming</option>
+                        <option value="invisible">⚪ Invisible</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" id="applyMassPresenceBtn" style="margin-top: 16px; width: 100%;">
+                  Apply Presence Status
+                </button>
+              </div>
+
+            </div>
+          </section>
+        </div>
+
+        <!-- ════════ TAB: APP SETTINGS ════════ -->
+        <div id="tab-settings" class="tab-pane hidden">
+          <section class="section" style="max-width: 600px;">
+            <div class="section-header">
+              <h2 class="section-title">App UI Configurations</h2>
+            </div>
+            <div class="glass-card" style="padding: 24px;">
+              <h3 style="font-size: 1rem; margin-bottom: 12px; color: var(--text-primary); font-weight: 600;">
+                Notification Preferences
+              </h3>
+              <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 0.88rem; line-height: 1.5;">
+                Enable or disable real-time popups (styled exactly as left-bordered glass banners) for control panel events.
+              </p>
+
+              <div style="display: flex; flex-direction: column; gap: 16px;">
+                <div class="setting-row" style="border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 12px;">
+                  <div>
+                    <span class="setting-label" style="font-size: 0.95rem; font-weight: 500; display: block; margin-bottom: 4px;">Enable Toast Notifications</span>
+                    <span style="font-size: 0.75rem; color: var(--text-muted);">Toggle all bottom-right notification popups</span>
+                  </div>
+                  <label class="toggle">
+                    <input type="checkbox" id="settingNotifyEnabled" checked />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+
+                <div class="setting-row" style="border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 12px;">
+                  <div>
+                    <span class="setting-label" style="font-size: 0.95rem; font-weight: 500; display: block; margin-bottom: 4px;">Bot Connection Changes</span>
+                    <span style="font-size: 0.75rem; color: var(--text-muted);">Notify when bots connect, disconnect, load, or unload</span>
+                  </div>
+                  <label class="toggle">
+                    <input type="checkbox" id="settingNotifyConnection" checked />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+
+                <div class="setting-row" style="border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 12px;">
+                  <div>
+                    <span class="setting-label" style="font-size: 0.95rem; font-weight: 500; display: block; margin-bottom: 4px;">Voice Channel Moves</span>
+                    <span style="font-size: 0.75rem; color: var(--text-muted);">Notify when bots are moved between voice channels</span>
+                  </div>
+                  <label class="toggle">
+                    <input type="checkbox" id="settingNotifyVc" checked />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+
+                <div class="setting-row" style="border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 12px;">
+                  <div>
+                    <span class="setting-label" style="font-size: 0.95rem; font-weight: 500; display: block; margin-bottom: 4px;">Command Results</span>
+                    <span style="font-size: 0.75rem; color: var(--text-muted);">Notify upon completion of bot mass commands</span>
+                  </div>
+                  <label class="toggle">
+                    <input type="checkbox" id="settingNotifyCommand" checked />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+
+                <div class="setting-row" style="padding-bottom: 12px;">
+                  <div>
+                    <span class="setting-label" style="font-size: 0.95rem; font-weight: 500; display: block; margin-bottom: 4px;">Console Warnings & Errors</span>
+                    <span style="font-size: 0.75rem; color: var(--text-muted);">Notify when a bot logs a warning or error to console</span>
+                  </div>
+                  <label class="toggle">
+                    <input type="checkbox" id="settingNotifyConsole" checked />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+      </main>
+    </div>
+
+  </div>
+
+  <!-- ══════════════ JOIN VC MODAL ══════════════ -->
+  <div class="modal-overlay" id="joinVcModal">
+    <div class="modal glass-card" id="joinVcModalCard">
+      <div class="modal-header">
+        <h3 class="modal-title">Join Voice Channel</h3>
+        <button class="modal-close" id="joinVcClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="joinVcRejoin" class="rejoin-row hidden"></div>
+        <label class="input-label">Server</label>
+        <select id="vcServerSelect" class="select">
+          <option value="">Loading servers…</option>
+        </select>
+        <label class="input-label mt-12">Channel</label>
+        <select id="vcChannelSelect" class="select" disabled>
+          <option value="">Select a server first</option>
+        </select>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="joinVcCancelBtn">Cancel</button>
+        <button class="btn btn-primary" id="joinVcConfirmBtn" disabled>Join</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════ EDIT BOT MODAL ══════════════ -->
+  <div class="modal-overlay" id="editBotModal">
+    <div class="modal glass-card" id="editBotModalCard">
+      <div class="modal-header">
+        <h3 class="modal-title">Edit Bot Credentials</h3>
+        <button class="modal-close" id="editBotClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editBotIndex" />
+        <label class="input-label">Name</label>
+        <input type="text" id="editBotName" class="input" placeholder="Bot name" autocomplete="off" />
+        <label class="input-label mt-12">Token</label>
+        <input type="password" id="editBotToken" class="input" placeholder="Leave blank to keep current token" autocomplete="off" />
+        <label class="input-label mt-12">Platform</label>
+        <select id="editBotPlatform" class="select">
+          <option value="desktop">Desktop</option>
+          <option value="mobile">Mobile</option>
+          <option value="browser">Browser</option>
+          <option value="vr">VR</option>
+        </select>
+        <div class="setting-row mt-12" style="border: none; padding: 0;">
+          <span class="setting-label">Reload bot on save</span>
+          <label class="toggle"><input type="checkbox" id="editBotReload" checked /><span class="toggle-slider"></span></label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="editBotCancelBtn">Cancel</button>
+        <button class="btn btn-primary" id="editBotSubmitBtn">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════ ADD BOT MODAL ══════════════ -->
+  <div class="modal-overlay" id="addBotModal">
+    <div class="modal glass-card" id="addBotModalCard">
+      <div class="modal-header">
+        <h3 class="modal-title">Add Bot Account</h3>
+        <button class="modal-close" id="addBotClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <label class="input-label">Name</label>
+        <input type="text" id="addBotName" class="input" placeholder="Bot name" autocomplete="off" />
+        <label class="input-label mt-12">Token</label>
+        <input type="password" id="addBotToken" class="input" placeholder="Bot token" autocomplete="off" />
+        <label class="input-label mt-12">Platform</label>
+        <select id="addBotPlatform" class="select">
+          <option value="desktop">Desktop</option>
+          <option value="mobile">Mobile</option>
+          <option value="browser">Browser</option>
+          <option value="vr">VR</option>
+        </select>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="addBotCancelBtn">Cancel</button>
+        <button class="btn btn-primary" id="addBotSubmitBtn">Add Bot</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/script.js"></script>
+</body>
+</html>
