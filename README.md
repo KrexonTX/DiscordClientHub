@@ -1,4 +1,4 @@
-# Discord Client Bot
+# Discord Client Bot Hub
 
 A multi-account Discord self-bot manager with a real-time web control panel. Control dozens of user-token bots from a single dashboard — manage voice channels, send DMs, update presence, send friend requests, and more.
 
@@ -249,7 +249,6 @@ All categories can be individually toggled in **Settings → App Settings**.
 
 ## 🛡️ Security Notes
 
-- **Never commit `config.json`** — it contains your tokens. It's already in `.gitignore`.
 - **Change the default password** (`changeme`) before exposing the web panel.
 - **Use a reverse proxy** (nginx/Caddy) with HTTPS if running on a public VPS.
 - Self-botting is against Discord's Terms of Service — use at your own risk.
