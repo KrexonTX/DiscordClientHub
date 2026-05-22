@@ -116,6 +116,22 @@ const CONFIG_PATH = path.join(__dirname, 'config.json');
 if (!fs.existsSync(CONFIG_PATH)) { console.error('❌ config.json not found!'); process.exit(1); }
 
 let config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+let configChanged = false;
+if (config.bots && Array.isArray(config.bots)) {
+    config.bots.forEach(bot => {
+        if (!bot.configId) {
+            bot.configId = 'cfg_' + Math.random().toString(36).substring(2, 11);
+            configChanged = true;
+        }
+    });
+}
+if (configChanged) {
+    try {
+        fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+    } catch (err) {
+        console.error('⚠️ Failed to save config with generated configIds:', err.message);
+    }
+}
 const OWNER_ID = config.owner_id;
 const WEB_PORT = config.web_port || 3000;
 const WEB_PASSWORD = config.web_password || 'changeme';
@@ -170,6 +186,8 @@ function createBot(botConfig, botIndex) {
     let currentPlatform = platformKey;
     let lastVc = null;
     let presenceStatus = botConfig.presence || 'online';
+    let loginFailed = false;
+    let loginErrorMsg = '';
 
     // Per-bot settings (persisted in config.json)
     if (!botConfig.settings) botConfig.settings = {};
@@ -183,7 +201,7 @@ function createBot(botConfig, botIndex) {
     }
 
     const wsProps = PLATFORMS[platformKey] || PLATFORMS.desktop;
-    const client = new Client({ ws: { properties: { ...wsProps } } });
+    const client = new Client({ syncStatus: true, ws: { properties: { ...wsProps } } });
     let vcRequester = { userId: null, dmChannelId: null, guildId: null };
 
     // - Safety handlers -
@@ -193,7 +211,12 @@ function createBot(botConfig, botIndex) {
     client.on('shardDisconnect', (ev, sid) => logToConsole('warn', tag, `Shard ${sid ?? 0} disconnected (${ev?.code || '?'})`));
     client.on('shardReconnecting', (sid) => logToConsole('info', tag, `Shard ${sid ?? 0} reconnecting...`));
     client.on('shardResume', (sid, r) => logToConsole('info', tag, `Shard ${sid ?? 0} resumed (${r} events)`));
-    client.on('invalidated', () => logToConsole('error', tag, 'Session invalidated! Token may be banned.'));
+    client.on('invalidated', () => {
+        loginFailed = true;
+        loginErrorMsg = 'Session invalidated / Token banned';
+        logToConsole('error', tag, 'Session invalidated! Token may be banned.');
+        if (io) io.to('authed').emit('botStatuses', getStatusesData());
+    });
     client.on('rateLimit', (info) => logToConsole('warn', tag, `Rate limited: ${info.path} (${info.timeout}ms)`));
     client.on('guildCreate', (g) => logToConsole('info', tag, `Joined server: ${g.name} (${g.id})`));
     client.on('guildDelete', (g) => logToConsole('info', tag, `Left server: ${g.name} (${g.id})`));
@@ -246,27 +269,96 @@ function createBot(botConfig, botIndex) {
     client.on('ready', async () => {
         logToConsole('info', tag, `✅ Logged in as ${client.user.tag} (${client.user.id}) — ${client.guilds.cache.size} servers — ${PLATFORM_LABELS[currentPlatform] || currentPlatform}`);
         
-        // Respect / apply the previously saved presence status
-        try {
-            if (presenceStatus === 'streaming') {
-                await client.user.setPresence({
-                    status: 'online',
-                    activities: [{
-                        name: 'Live Stream',
-                        type: 'STREAMING',
-                        url: 'https://twitch.tv/discord'
-                    }]
-                });
-            } else {
-                const statusVal = presenceStatus === 'invisible' ? 'invisible' : presenceStatus;
-                await client.user.setStatus(statusVal);
-                await client.user.setPresence({
-                    status: statusVal,
-                    activities: []
-                });
+        loginFailed = false;
+        loginErrorMsg = '';
+
+        // Cache state immediately on ready
+        let avatarUrl = null;
+        try { avatarUrl = client.user?.displayAvatarURL({ dynamic: true, size: 128 }); } catch (_) {}
+        botConfig.cachedAvatarUrl = avatarUrl;
+        botConfig.cachedServers = client.guilds.cache.size;
+        botConfig.cachedTag = client.user.tag;
+        botConfig.cachedUsername = client.user.username;
+        botConfig.cachedId = client.user.id;
+        botConfig.cachedGuildIds = client.guilds.cache.map(g => g.id);
+        botConfig.cachedCreatedAt = client.user.createdAt ? client.user.createdAt.toISOString() : null;
+        saveConfig();
+
+        // Respect previous status of discord if set manually, otherwise apply config status after a short delay
+        let presenceCheckCount = 0;
+        const presenceInterval = setInterval(async () => {
+            if (!client.user) {
+                clearInterval(presenceInterval);
+                return;
             }
-        } catch (err) {
-            logToConsole('warn', tag, `Failed to apply initial presence status (${presenceStatus}): ${err.message}`);
+            const detectedStatus = client.settings?.status || client.user.presence?.status;
+            presenceCheckCount++;
+            if (detectedStatus && ['online', 'idle', 'dnd', 'invisible', 'offline'].includes(detectedStatus)) {
+                clearInterval(presenceInterval);
+                const mappedStatus = detectedStatus === 'offline' ? 'invisible' : detectedStatus;
+                presenceStatus = mappedStatus;
+                botConfig.presence = mappedStatus;
+                saveConfig();
+                if (io) io.to('authed').emit('botStatuses', getStatusesData());
+                logToConsole('info', tag, `Detected status from Discord session: ${mappedStatus}`);
+            } else if (presenceCheckCount >= 5) {
+                clearInterval(presenceInterval);
+                // Fall back to config status if still undefined after 5 seconds
+                try {
+                    if (presenceStatus === 'streaming') {
+                        await client.user.setPresence({
+                            status: 'online',
+                            activities: [{
+                                name: 'Live Stream',
+                                type: 'STREAMING',
+                                url: 'https://twitch.tv/discord'
+                            }]
+                        });
+                    } else {
+                        const statusVal = presenceStatus === 'invisible' ? 'invisible' : presenceStatus;
+                        await client.user.setStatus(statusVal);
+                        await client.user.setPresence({
+                            status: statusVal,
+                            activities: []
+                        });
+                    }
+                    logToConsole('info', tag, `Applied configured status: ${presenceStatus}`);
+                } catch (err) {
+                    logToConsole('warn', tag, `Failed to apply initial presence status (${presenceStatus}): ${err.message}`);
+                }
+            }
+        }, 1000);
+    });
+
+    client.on('presenceUpdate', (oldPresence, newPresence) => {
+        if (newPresence && newPresence.userId === client.user?.id) {
+            const detectedStatus = client.settings?.status || newPresence.status;
+            if (detectedStatus && ['online', 'idle', 'dnd', 'offline'].includes(detectedStatus)) {
+                const mappedStatus = detectedStatus === 'offline' ? 'invisible' : detectedStatus;
+                if (presenceStatus !== mappedStatus) {
+                    presenceStatus = mappedStatus;
+                    botConfig.presence = mappedStatus;
+                    saveConfig();
+                    if (io) io.to('authed').emit('botStatuses', getStatusesData());
+                }
+            }
+        }
+    });
+
+    // Gateway Syncing for real-time status updates made from other Discord client applications
+    client.on('raw', (packet) => {
+        if (packet.t === 'USER_SETTINGS_UPDATE') {
+            const status = packet.d?.status;
+            if (status && ['online', 'idle', 'dnd', 'invisible', 'offline'].includes(status)) {
+                const mappedStatus = status === 'offline' ? 'invisible' : status;
+                if (presenceStatus !== mappedStatus) {
+                    presenceStatus = mappedStatus;
+                    botConfig.presence = mappedStatus;
+                    saveConfig();
+                    if (io) io.to('authed').emit('botStatuses', getStatusesData());
+                    logToConsole('info', tag, `Status synced from external client: ${mappedStatus}`);
+                }
+            }
         }
     });
 
@@ -651,20 +743,47 @@ function createBot(botConfig, botIndex) {
         let avatarUrl = null;
         try { avatarUrl = client.user?.displayAvatarURL({ dynamic: true, size: 128 }); } catch (_) {}
 
+        if (client.user) {
+            let changed = false;
+            if (botConfig.cachedAvatarUrl !== avatarUrl) { botConfig.cachedAvatarUrl = avatarUrl; changed = true; }
+            if (botConfig.cachedServers !== client.guilds.cache.size) { botConfig.cachedServers = client.guilds.cache.size; changed = true; }
+            if (botConfig.cachedTag !== client.user.tag) { botConfig.cachedTag = client.user.tag; changed = true; }
+            if (botConfig.cachedUsername !== client.user.username) { botConfig.cachedUsername = client.user.username; changed = true; }
+            if (botConfig.cachedId !== client.user.id) { botConfig.cachedId = client.user.id; changed = true; }
+
+            const liveGuildIds = client.guilds.cache.map(g => g.id);
+            if (!Array.isArray(botConfig.cachedGuildIds) || botConfig.cachedGuildIds.length !== liveGuildIds.length || !liveGuildIds.every((id, idx) => botConfig.cachedGuildIds[idx] === id)) {
+                botConfig.cachedGuildIds = liveGuildIds;
+                changed = true;
+            }
+
+            const liveCreatedAt = client.user.createdAt ? client.user.createdAt.toISOString() : null;
+            if (botConfig.cachedCreatedAt !== liveCreatedAt) {
+                botConfig.cachedCreatedAt = liveCreatedAt;
+                changed = true;
+            }
+
+            if (changed) {
+                saveConfig();
+            }
+        }
+
         return {
+            configId: botConfig.configId,
             name: botName,
-            tag: client.user?.tag || 'Connecting...',
-            id: client.user?.id || '?',
-            servers: client.guilds.cache.size,
-            guildIds: client.user ? client.guilds.cache.map(g => g.id) : [],
+            tag: client.user?.tag || botConfig.cachedTag || 'Connecting...',
+            username: client.user?.username || botConfig.cachedUsername || '',
+            id: client.user?.id || botConfig.cachedId || '?',
+            servers: client.user ? client.guilds.cache.size : (botConfig.cachedServers || 0),
+            guildIds: client.user ? client.guilds.cache.map(g => g.id) : (botConfig.cachedGuildIds || []),
             platform: PLATFORM_LABELS[currentPlatform] || currentPlatform,
             platformKey: currentPlatform,
             uptime: formatUptime(),
-            avatarUrl,
+            avatarUrl: avatarUrl || botConfig.cachedAvatarUrl || null,
             note: botConfig.note || '',
             lastVc,
             settings: getAllSettings(),
-            createdAt: client.user?.createdAt ? client.user.createdAt.toISOString() : null,
+            createdAt: client.user?.createdAt ? client.user.createdAt.toISOString() : (botConfig.cachedCreatedAt || null),
             presenceStatus,
             voice: voice ? {
                 channel: voice.channel.name,
@@ -675,6 +794,9 @@ function createBot(botConfig, botIndex) {
                 deafened: voice.selfDeaf,
             } : null,
             ready: !!client.user,
+            loginFailed,
+            loginErrorMsg,
+            disabled: !!botConfig.disabled,
         };
     }
 
@@ -703,7 +825,12 @@ function createBot(botConfig, botIndex) {
             }));
     }
 
-    client.login(token).catch(err => logToConsole('error', tag, `Login failed: ${err.message}`));
+    client.login(token).catch(err => {
+        loginFailed = true;
+        loginErrorMsg = err.message;
+        logToConsole('error', tag, `Login failed: ${err.message}`);
+        if (io) io.to('authed').emit('botStatuses', getStatusesData());
+    });
 
     return { client, name: botName, getStatus, processWebCommand, getServers, getVoiceChannels };
 }
@@ -719,11 +846,17 @@ console.log('╚═════════════════════�
 
 const activeBots = [];
 for (let i = 0; i < config.bots.length; i++) {
-    const instance = createBot(config.bots[i], i);
-    if (instance) activeBots.push(instance);
-    else activeBots.push(null);
+    const botCfg = config.bots[i];
+    if (botCfg.disabled === true) {
+        logToConsole('info', botCfg.name, 'Skipped startup login — bot is disabled.');
+        activeBots.push(null);
+    } else {
+        const instance = createBot(botCfg, i);
+        if (instance) activeBots.push(instance);
+        else activeBots.push(null);
+    }
 }
-if (activeBots.every(b => !b)) { console.error('❌ No bots started.'); process.exit(1); }
+if (config.bots.length === 0) { console.error('❌ No bots configured in config.json.'); process.exit(1); }
 logToConsole('info', 'LAUNCHER', `${activeBots.filter(b => b).length} bot(s) launching...`);
 
 // ══════════════════════════════════════════════
@@ -740,26 +873,29 @@ function getStatusesData() {
         if (!b) {
             return {
                 index: i,
+                configId: botCfg.configId,
                 name: botCfg.name,
-                tag: 'Unloaded (Offline)',
-                id: '?',
-                servers: 0,
-                guildIds: [],
+                tag: botCfg.cachedTag || 'Offline',
+                username: botCfg.cachedUsername || '',
+                id: botCfg.cachedId || '?',
+                servers: botCfg.cachedServers || 0,
+                guildIds: botCfg.cachedGuildIds || [],
                 platform: PLATFORM_LABELS[botCfg.platform] || botCfg.platform,
                 platformKey: botCfg.platform,
                 uptime: 'Offline',
-                avatarUrl: null,
+                avatarUrl: botCfg.cachedAvatarUrl || null,
                 note: botCfg.note || '',
                 lastVc: null,
                 settings: botCfg.settings || {},
-                createdAt: null,
+                createdAt: botCfg.cachedCreatedAt || null,
                 voice: null,
                 ready: false,
                 unloaded: true,
-                presenceStatus: 'offline'
+                presenceStatus: 'offline',
+                disabled: !!botCfg.disabled
             };
         }
-        return { index: i, ...b.getStatus(), unloaded: false };
+        return { index: i, configId: botCfg.configId, ...b.getStatus(), unloaded: false };
     });
 }
 
@@ -812,20 +948,33 @@ io.on('connection', (socket) => {
         socket.emit('botChannels', { botIndex, serverId, serverName: guild?.name || '?', channels: bot.getVoiceChannels(serverId) });
     });
 
-    socket.on('addBot', ({ name, token, platform }) => {
+    socket.on('addBot', ({ name, token, platform, disabled }) => {
         if (!socket.rooms.has('authed')) return;
         if (!name || !token) return socket.emit('commandResult', { bot: 'System', command: 'Add bot', result: '❌ Name and token required', success: false });
-        const botConfig = { name, token, platform: platform || 'desktop', note: '' };
+        const botConfig = {
+            configId: 'cfg_' + Math.random().toString(36).substring(2, 11),
+            name,
+            token,
+            platform: platform || 'desktop',
+            note: '',
+            disabled: !!disabled
+        };
         config.bots.push(botConfig);
         saveConfig();
-        const instance = createBot(botConfig, config.bots.length - 1);
-        if (instance) {
-            activeBots.push(instance);
-            logToConsole('info', 'WEB', `Bot added: ${name}`);
-            socket.emit('commandResult', { bot: 'System', command: 'Add bot', result: `✅ Added ${name}`, success: true });
-        } else {
+        if (botConfig.disabled) {
             activeBots.push(null);
-            socket.emit('commandResult', { bot: 'System', command: 'Add bot', result: '❌ Failed to start (added offline)', success: false });
+            logToConsole('info', 'WEB', `Bot added (disabled): ${name}`);
+            socket.emit('commandResult', { bot: 'System', command: 'Add bot', result: `✅ Added ${name} (disabled)`, success: true });
+        } else {
+            const instance = createBot(botConfig, config.bots.length - 1);
+            if (instance) {
+                activeBots.push(instance);
+                logToConsole('info', 'WEB', `Bot added: ${name}`);
+                socket.emit('commandResult', { bot: 'System', command: 'Add bot', result: `✅ Added ${name}`, success: true });
+            } else {
+                activeBots.push(null);
+                socket.emit('commandResult', { bot: 'System', command: 'Add bot', result: '❌ Failed to start (added offline)', success: false });
+            }
         }
         io.to('authed').emit('botStatuses', getStatusesData());
     });
@@ -859,12 +1008,44 @@ io.on('connection', (socket) => {
         if (!bot) return socket.emit('commandResult', { bot: 'System', command: 'Unload', result: 'ℹ️ Already unloaded', success: true });
         const name = bot.name;
         logToConsole('info', 'WEB', `Unloading bot: ${name} (#${botIndex})...`);
+        const botCfg = config.bots[botIndex];
+        if (bot.client && bot.client.user) {
+            let avatarUrl = null;
+            try { avatarUrl = bot.client.user.displayAvatarURL({ dynamic: true, size: 128 }); } catch (_) {}
+            botCfg.cachedAvatarUrl = avatarUrl || botCfg.cachedAvatarUrl;
+            botCfg.cachedServers = bot.client.guilds.cache.size || botCfg.cachedServers;
+            botCfg.cachedTag = bot.client.user.tag || botCfg.cachedTag;
+            botCfg.cachedUsername = bot.client.user.username || botCfg.cachedUsername;
+            botCfg.cachedId = bot.client.user.id || botCfg.cachedId;
+            botCfg.cachedGuildIds = bot.client.guilds.cache.map(g => g.id) || botCfg.cachedGuildIds;
+            botCfg.cachedCreatedAt = bot.client.user.createdAt ? bot.client.user.createdAt.toISOString() : botCfg.cachedCreatedAt;
+            saveConfig();
+        }
         try {
             bot.client.destroy();
         } catch (_) {}
         activeBots[botIndex] = null;
         logToConsole('info', 'WEB', `✅ Bot unloaded: ${name}`);
         socket.emit('commandResult', { bot: 'System', command: 'Unload', result: `✅ Unloaded ${name}`, success: true });
+        io.to('authed').emit('botStatuses', getStatusesData());
+    });
+
+    socket.on('removeBot', ({ botIndex }) => {
+        if (!socket.rooms.has('authed')) return;
+        if (botIndex < 0 || botIndex >= config.bots.length) return;
+        const bot = activeBots[botIndex];
+        const name = config.bots[botIndex].name;
+        logToConsole('info', 'WEB', `Removing bot: ${name} (#${botIndex})...`);
+        if (bot) {
+            try {
+                bot.client.destroy();
+            } catch (_) {}
+        }
+        config.bots.splice(botIndex, 1);
+        activeBots.splice(botIndex, 1);
+        saveConfig();
+        logToConsole('info', 'WEB', `✅ Bot removed from config: ${name}`);
+        socket.emit('commandResult', { bot: 'System', command: 'Remove bot', result: `✅ Removed ${name} from config`, success: true });
         io.to('authed').emit('botStatuses', getStatusesData());
     });
 
@@ -875,42 +1056,71 @@ io.on('connection', (socket) => {
             if (idx >= 0 && idx < activeBots.length) {
                 const bot = activeBots[idx];
                 if (bot) {
+                    const botCfg = config.bots[idx];
+                    if (bot.client && bot.client.user) {
+                        let avatarUrl = null;
+                        try { avatarUrl = bot.client.user.displayAvatarURL({ dynamic: true, size: 128 }); } catch (_) {}
+                        botCfg.cachedAvatarUrl = avatarUrl || botCfg.cachedAvatarUrl;
+                        botCfg.cachedServers = bot.client.guilds.cache.size || botCfg.cachedServers;
+                        botCfg.cachedTag = bot.client.user.tag || botCfg.cachedTag;
+                        botCfg.cachedUsername = bot.client.user.username || botCfg.cachedUsername;
+                        botCfg.cachedId = bot.client.user.id || botCfg.cachedId;
+                        botCfg.cachedGuildIds = bot.client.guilds.cache.map(g => g.id) || botCfg.cachedGuildIds;
+                        botCfg.cachedCreatedAt = bot.client.user.createdAt ? bot.client.user.createdAt.toISOString() : botCfg.cachedCreatedAt;
+                    }
                     try { bot.client.destroy(); } catch (_) {}
                     activeBots[idx] = null;
                     logToConsole('info', 'WEB', `✅ Bot unloaded: ${bot.name}`);
                 }
             }
         });
+        saveConfig();
         socket.emit('commandResult', { bot: 'System', command: 'Mass Unload', result: `✅ Unloaded selected bots`, success: true });
         io.to('authed').emit('botStatuses', getStatusesData());
     });
 
-    socket.on('editBot', ({ botIndex, name, token, platform, reload }) => {
+    socket.on('editBot', ({ botIndex, name, token, platform, reload, disabled }) => {
         if (!socket.rooms.has('authed')) return;
         if (botIndex < 0 || botIndex >= config.bots.length) return;
         const botCfg = config.bots[botIndex];
         const oldName = botCfg.name;
+        const wasDisabled = !!botCfg.disabled;
+        
         if (name) botCfg.name = name;
         if (token) botCfg.token = token;
         if (platform && PLATFORMS[platform]) botCfg.platform = platform;
+        if (disabled !== undefined) botCfg.disabled = !!disabled;
+        
         saveConfig();
-        logToConsole('info', 'WEB', `Bot edited: ${oldName} → name=${botCfg.name}, platform=${botCfg.platform}${token ? ', token=changed' : ''}`);
+        logToConsole('info', 'WEB', `Bot edited: ${oldName} → name=${botCfg.name}, platform=${botCfg.platform}, disabled=${botCfg.disabled}${token ? ', token=changed' : ''}`);
 
-        if (reload || token) {
+        const nowDisabled = !!botCfg.disabled;
+
+        if (nowDisabled) {
             if (botIndex < activeBots.length && activeBots[botIndex]) {
                 try { activeBots[botIndex].client.destroy(); } catch (_) {}
-            }
-            const newInstance = createBot(botCfg, botIndex);
-            if (newInstance) {
-                activeBots[botIndex] = newInstance;
-                logToConsole('info', 'WEB', `✅ Bot reloaded after edit: ${botCfg.name}`);
-                socket.emit('commandResult', { bot: 'System', command: 'Edit bot', result: `✅ Updated & reloaded ${botCfg.name}`, success: true });
-            } else {
                 activeBots[botIndex] = null;
-                socket.emit('commandResult', { bot: 'System', command: 'Edit bot', result: `⚠️ Updated config but failed to restart`, success: false });
+                logToConsole('info', 'WEB', `✅ Bot deactivated/destroyed on disable: ${botCfg.name}`);
             }
+            socket.emit('commandResult', { bot: 'System', command: 'Edit bot', result: `✅ Updated ${botCfg.name} (Disabled)`, success: true });
         } else {
-            socket.emit('commandResult', { bot: 'System', command: 'Edit bot', result: `✅ Updated ${botCfg.name} (no reload)`, success: true });
+            const shouldLoad = wasDisabled || reload || token || !activeBots[botIndex];
+            if (shouldLoad) {
+                if (botIndex < activeBots.length && activeBots[botIndex]) {
+                    try { activeBots[botIndex].client.destroy(); } catch (_) {}
+                }
+                const newInstance = createBot(botCfg, botIndex);
+                if (newInstance) {
+                    activeBots[botIndex] = newInstance;
+                    logToConsole('info', 'WEB', `✅ Bot loaded/reloaded after edit: ${botCfg.name}`);
+                    socket.emit('commandResult', { bot: 'System', command: 'Edit bot', result: `✅ Updated & loaded ${botCfg.name}`, success: true });
+                } else {
+                    activeBots[botIndex] = null;
+                    socket.emit('commandResult', { bot: 'System', command: 'Edit bot', result: `⚠️ Updated config but failed to start`, success: false });
+                }
+            } else {
+                socket.emit('commandResult', { bot: 'System', command: 'Edit bot', result: `✅ Updated ${botCfg.name} (no reload)`, success: true });
+            }
         }
         io.to('authed').emit('botStatuses', getStatusesData());
     });
