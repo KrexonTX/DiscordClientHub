@@ -143,11 +143,12 @@
                 <span class="badge" id="botCount">0 bots</span>
               </div>
               <div class="filter-group">
-                <input type="text" class="input" id="filterServerId" placeholder="Filter by Server ID..." />
+                <input type="text" class="input" id="filterServerId" placeholder="Search by name, tag, note, or ServerID:123..." />
                 <select class="select" id="filterStatus">
                   <option value="all">🔵 All Bots</option>
                   <option value="loaded">🟢 Loaded</option>
                   <option value="unloaded">⚪ Unloaded</option>
+                  <option value="failed">🔴 Failed</option>
                 </select>
               </div>
             </div>
@@ -156,13 +157,7 @@
                 <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M8 15s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
                 <p>Waiting for bot connections...</p>
               </div>
-              <!-- Add Bot card template -->
-              <div class="bot-card glass-card add-bot-card" id="addBotCard">
-                <div class="add-bot-inner">
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                  <span>Add Bot Account</span>
-                </div>
-              </div>
+              <!-- Add Bot card placeholder removed from grid -->
             </div>
           </section>
         </div>
@@ -237,6 +232,21 @@
                 <div class="command-result" id="commandResult"></div>
               </div>
 
+              <!-- Command Presets card -->
+              <div class="glass-card" style="padding: 20px; display: flex; flex-direction: column; gap: 14px; margin-bottom: 20px;">
+                <h3 style="font-size: 0.95rem; font-weight: 600; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 8px; margin-bottom: 4px;">Command Presets</h3>
+                <p style="font-size: 0.76rem; color: var(--text-muted); line-height: 1.4; margin: 0;">
+                  Click a preset to run it instantly on selected bots. Hold <kbd style="font-family: inherit; background: rgba(255,255,255,0.1); padding: 1px 4px; border-radius: 3px;">Shift</kbd> + click to paste and edit.
+                </p>
+                <div class="preset-chips" id="presetChips">
+                  <!-- Chips will be rendered dynamically by script.js -->
+                </div>
+                <div class="input-row" style="margin-top: 6px;">
+                  <input type="text" id="newPresetInput" class="input" placeholder="Enter new preset command..." autocomplete="off" />
+                  <button id="addPresetBtn" class="btn btn-ghost btn-sm" style="height: 38px;">Save Preset</button>
+                </div>
+              </div>
+
               <!-- Mass DM card -->
               <div class="glass-card" style="padding: 20px; display: flex; flex-direction: column; gap: 14px;">
                 <h3 style="font-size: 0.95rem; font-weight: 600; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 8px; margin-bottom: 4px;">Mass DM Broadcast</h3>
@@ -256,9 +266,22 @@
                     <input type="checkbox" id="massDmDeleteCheck" style="accent-color: var(--blurple);" />
                     <span>Auto-delete messages after sending</span>
                   </label>
-                  <div style="display: flex; align-items: center; gap: 8px; font-size: 0.8rem;">
-                    <span style="color: var(--text-muted);">Stagger delay (sec):</span>
-                    <input type="text" class="input" id="massDmDelayInput" value="2-5" style="width: 70px; height: 32px; padding: 4px 8px; margin: 0; text-align: center;" placeholder="2-5" />
+                  <div class="custom-slider-container">
+                    <span style="color: var(--text-muted);">Stagger delay:</span>
+                    <div class="slider-wrapper">
+                      <div class="slider-track-bg"></div>
+                      <div class="slider-track-fill" id="sliderTrackFill"></div>
+                      <input type="range" id="massDmDelayMinSlider" min="1" max="60" value="5" class="custom-range-slider" />
+                      <input type="range" id="massDmDelayMaxSlider" min="1" max="60" value="15" class="custom-range-slider" />
+                      <div class="slider-thumb-label" id="sliderThumbMinLabel">
+                        <span id="sliderMinVal">5</span>s
+                      </div>
+                      <div class="slider-thumb-label" id="sliderThumbMaxLabel">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 2px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                        <span id="sliderMaxVal">15</span>s
+                      </div>
+                      <span class="slider-estimate" id="sliderEstimate">~0m</span>
+                    </div>
                   </div>
                 </div>
 
@@ -396,6 +419,40 @@
             <div class="section-header">
               <h2 class="section-title">App UI Configurations</h2>
             </div>
+            <!-- Panel Branding Settings -->
+            <div class="glass-card" style="padding: 24px; margin-bottom: 20px;">
+              <h3 style="font-size: 1rem; margin-bottom: 12px; color: var(--text-primary); font-weight: 600;">
+                Panel Branding Settings
+              </h3>
+              <div style="display: flex; flex-direction: column; gap: 16px;">
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                  <label class="input-label" style="margin: 0; font-size: 0.78rem;">Panel Title</label>
+                  <input type="text" id="settingBrandTitle" class="input" placeholder="BotHub" autocomplete="off" />
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                  <label class="input-label" style="margin: 0; font-size: 0.78rem;">Panel Subtitle</label>
+                  <input type="text" id="settingBrandSubtitle" class="input" placeholder="Discord Self-Bot" autocomplete="off" />
+                </div>
+              </div>
+            </div>
+
+            <!-- Sorting Preferences -->
+            <div class="glass-card" style="padding: 24px; margin-bottom: 20px;">
+              <h3 style="font-size: 1rem; margin-bottom: 12px; color: var(--text-primary); font-weight: 600;">
+                Dashboard Sorting Preferences
+              </h3>
+              <div class="setting-row" style="border: none; padding: 0;">
+                <div>
+                  <span class="setting-label" style="font-size: 0.95rem; font-weight: 500; display: block; margin-bottom: 4px;">Show Failed First</span>
+                  <span style="font-size: 0.75rem; color: var(--text-muted);">Sort bots with connection errors to the top of the grid</span>
+                </div>
+                <label class="toggle">
+                  <input type="checkbox" id="settingShowFailedFirst" />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+
             <div class="glass-card" style="padding: 24px;">
               <h3 style="font-size: 1rem; margin-bottom: 12px; color: var(--text-primary); font-weight: 600;">
                 Notification Preferences
@@ -449,13 +506,38 @@
                   </label>
                 </div>
 
-                <div class="setting-row" style="padding-bottom: 12px;">
+                <div class="setting-row" style="border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 12px;">
                   <div>
                     <span class="setting-label" style="font-size: 0.95rem; font-weight: 500; display: block; margin-bottom: 4px;">Console Warnings & Errors</span>
                     <span style="font-size: 0.75rem; color: var(--text-muted);">Notify when a bot logs a warning or error to console</span>
                   </div>
                   <label class="toggle">
                     <input type="checkbox" id="settingNotifyConsole" checked />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+
+                <div class="setting-row" style="border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 12px;">
+                  <div>
+                    <span class="setting-label" style="font-size: 0.95rem; font-weight: 500; display: block; margin-bottom: 4px;">Notification Timeout</span>
+                    <span style="font-size: 0.75rem; color: var(--text-muted);">Duration before notifications automatically disappear</span>
+                  </div>
+                  <select id="settingNotifyTimeout" class="select" style="width: 140px; padding: 6px 12px; font-size: 0.85rem;">
+                    <option value="3000">3 Seconds</option>
+                    <option value="5000" selected>5 Seconds</option>
+                    <option value="10000">10 Seconds</option>
+                    <option value="15000">15 Seconds</option>
+                    <option value="0">Keep Visible</option>
+                  </select>
+                </div>
+
+                <div class="setting-row" style="padding-bottom: 4px;">
+                  <div>
+                    <span class="setting-label" style="font-size: 0.95rem; font-weight: 500; display: block; margin-bottom: 4px;">Hold on Hover</span>
+                    <span style="font-size: 0.75rem; color: var(--text-muted);">Pause the auto-dismiss timer when mouse is over a notification</span>
+                  </div>
+                  <label class="toggle">
+                    <input type="checkbox" id="settingNotifyHoldOnHover" checked />
                     <span class="toggle-slider"></span>
                   </label>
                 </div>
@@ -518,39 +600,71 @@
           <span class="setting-label">Reload bot on save</span>
           <label class="toggle"><input type="checkbox" id="editBotReload" checked /><span class="toggle-slider"></span></label>
         </div>
+        <div class="setting-row mt-12" style="border: none; padding: 0;">
+          <span class="setting-label">Disabled (don't log in on startup)</span>
+          <label class="toggle"><input type="checkbox" id="editBotDisabled" /><span class="toggle-slider"></span></label>
+        </div>
       </div>
       <div class="modal-footer">
+        <button class="btn btn-danger-ghost" id="editBotRemoveBtn" style="margin-right: auto;">Remove Bot</button>
         <button class="btn btn-ghost" id="editBotCancelBtn">Cancel</button>
         <button class="btn btn-primary" id="editBotSubmitBtn">Save Changes</button>
       </div>
     </div>
   </div>
 
-  <!-- ══════════════ ADD BOT MODAL ══════════════ -->
-  <div class="modal-overlay" id="addBotModal">
-    <div class="modal glass-card" id="addBotModalCard">
+  <!-- ══════════════ CONFIRM DELETE MODAL ══════════════ -->
+  <div class="modal-overlay" id="confirmDeleteModal">
+    <div class="modal glass-card" id="confirmDeleteModalCard">
       <div class="modal-header">
-        <h3 class="modal-title">Add Bot Account</h3>
-        <button class="modal-close" id="addBotClose">&times;</button>
+        <h3 class="modal-title">Delete Bot Configuration</h3>
+        <button class="modal-close" id="confirmDeleteClose">&times;</button>
       </div>
       <div class="modal-body">
+        <p style="color: var(--text-secondary); line-height: 1.5; font-size: 0.9rem; margin: 0;">
+          Are you sure you want to remove <strong id="deleteBotName" style="color: var(--red);">this bot</strong> from the configuration? This will permanently delete its settings and login token.
+        </p>
+        <p style="color: var(--text-muted); font-size: 0.78rem; margin-top: 10px; line-height: 1.4;">
+          ⚠️ This action is irreversible. The bot instance will be stopped immediately.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="confirmDeleteCancelBtn">Cancel</button>
+        <button class="btn btn-danger" id="confirmDeleteConfirmBtn">Yes, Remove Bot</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating Add Bot FAB Button & Form -->
+  <div class="fab-container" id="addBotFabContainer">
+    <div class="fab-form glass-card" id="addBotFabForm">
+      <div class="fab-form-header">
+        <h4>Add Bot Account</h4>
+      </div>
+      <div class="fab-form-body">
         <label class="input-label">Name</label>
-        <input type="text" id="addBotName" class="input" placeholder="Bot name" autocomplete="off" />
+        <input type="text" id="fabBotName" class="input" placeholder="Bot name" autocomplete="off" />
         <label class="input-label mt-12">Token</label>
-        <input type="password" id="addBotToken" class="input" placeholder="Bot token" autocomplete="off" />
+        <input type="password" id="fabBotToken" class="input" placeholder="Bot token" autocomplete="off" />
         <label class="input-label mt-12">Platform</label>
-        <select id="addBotPlatform" class="select">
+        <select id="fabBotPlatform" class="select">
           <option value="desktop">Desktop</option>
           <option value="mobile">Mobile</option>
           <option value="browser">Browser</option>
           <option value="vr">VR</option>
         </select>
+        <div class="setting-row mt-12" style="border: none; padding: 0;">
+          <span class="setting-label">Disabled on startup</span>
+          <label class="toggle"><input type="checkbox" id="fabBotDisabled" /><span class="toggle-slider"></span></label>
+        </div>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-ghost" id="addBotCancelBtn">Cancel</button>
-        <button class="btn btn-primary" id="addBotSubmitBtn">Add Bot</button>
+      <div class="fab-form-footer">
+        <button class="btn btn-primary btn-sm btn-full" id="fabBotSubmitBtn">Add Bot</button>
       </div>
     </div>
+    <button class="fab-btn" id="addBotFabBtn" title="Add Bot Account">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
   </div>
 
   <!-- Toast Notification Container -->
