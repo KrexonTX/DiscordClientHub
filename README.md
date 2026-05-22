@@ -51,7 +51,7 @@ A multi-account Discord self-bot manager with a real-time web control panel. Con
 
 ## 📅 Update Version Logs
 
-### v1.2.0 - Core Reliability & Layout Polish (Latest)
+### v1.1.1 - Core Reliability & Layout Polish (Latest)
 - **Advanced Delay Range Slider**: Added a double-thumb slider allowing for precise min-max stagger delays during mass operations, complete with broadcast runtime estimations.
 - **Startup Execution Control**: Added a "Disabled on startup" toggle in both the Add Bot FAB and Edit Bot credentials modals to prevent specific bots from connecting when the backend launches.
 - **Toast Notification Physics**: Integrated custom timeout intervals (3s, 5s, 10s, 15s, Keep Visible) with mouse-hover pause physics.
