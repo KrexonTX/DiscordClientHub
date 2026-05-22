@@ -26,7 +26,6 @@
     botGrid:        $('#botGrid'),
     botCount:       $('#botCount'),
     botsEmpty:      $('#botsEmpty'),
-    addBotCard:     $('#addBotCard'),
     targetBotsWidget: $('#targetBotsWidget'),
     showHiddenBots: $('#showHiddenBots'),
     filterServerId: $('#filterServerId'),
@@ -47,7 +46,14 @@
     massDmUserId:   $('#massDmUserId'),
     massDmMessage:  $('#massDmMessage'),
     massDmDeleteCheck: $('#massDmDeleteCheck'),
-    massDmDelayInput: $('#massDmDelayInput'),
+    massDmDelayMinSlider: $('#massDmDelayMinSlider'),
+    massDmDelayMaxSlider: $('#massDmDelayMaxSlider'),
+    sliderTrackFill: $('#sliderTrackFill'),
+    sliderThumbMinLabel: $('#sliderThumbMinLabel'),
+    sliderThumbMaxLabel: $('#sliderThumbMaxLabel'),
+    sliderMinVal:       $('#sliderMinVal'),
+    sliderMaxVal:       $('#sliderMaxVal'),
+    sliderEstimate:  $('#sliderEstimate'),
     massNotifyOnMove: $('#massNotifyOnMove'),
     massNotifyOnDisconnect: $('#massNotifyOnDisconnect'),
     applyMassSettingsBtn: $('#applyMassSettingsBtn'),
@@ -71,15 +77,6 @@
     vcServerSelect:    $('#vcServerSelect'),
     vcChannelSelect:   $('#vcChannelSelect'),
 
-    // Add Bot modal
-    addBotModal:       $('#addBotModal'),
-    addBotClose:       $('#addBotClose'),
-    addBotCancelBtn:   $('#addBotCancelBtn'),
-    addBotSubmitBtn:   $('#addBotSubmitBtn'),
-    addBotName:        $('#addBotName'),
-    addBotToken:       $('#addBotToken'),
-    addBotPlatform:    $('#addBotPlatform'),
-
     // Edit Bot modal
     editBotModal:       $('#editBotModal'),
     editBotClose:       $('#editBotClose'),
@@ -90,6 +87,36 @@
     editBotToken:       $('#editBotToken'),
     editBotPlatform:    $('#editBotPlatform'),
     editBotReload:      $('#editBotReload'),
+    editBotDisabled:    $('#editBotDisabled'),
+    editBotRemoveBtn:   $('#editBotRemoveBtn'),
+
+    // Confirm Delete Modal
+    confirmDeleteModal:      $('#confirmDeleteModal'),
+    confirmDeleteClose:      $('#confirmDeleteClose'),
+    confirmDeleteCancelBtn:  $('#confirmDeleteCancelBtn'),
+    confirmDeleteConfirmBtn: $('#confirmDeleteConfirmBtn'),
+    deleteBotName:           $('#deleteBotName'),
+
+    // App UI Configurations
+    settingBrandTitle:       $('#settingBrandTitle'),
+    settingBrandSubtitle:    $('#settingBrandSubtitle'),
+    settingShowFailedFirst:  $('#settingShowFailedFirst'),
+    settingNotifyTimeout:     $('#settingNotifyTimeout'),
+    settingNotifyHoldOnHover: $('#settingNotifyHoldOnHover'),
+
+    // Command Presets
+    presetChips:             $('#presetChips'),
+    newPresetInput:          $('#newPresetInput'),
+    addPresetBtn:            $('#addPresetBtn'),
+
+    // Floating Add Bot FAB
+    addBotFabContainer:      $('#addBotFabContainer'),
+    addBotFabBtn:            $('#addBotFabBtn'),
+    fabBotName:              $('#fabBotName'),
+    fabBotToken:             $('#fabBotToken'),
+    fabBotPlatform:          $('#fabBotPlatform'),
+    fabBotSubmitBtn:         $('#fabBotSubmitBtn'),
+    fabBotDisabled:          $('#fabBotDisabled'),
   };
 
   // ── State ──
@@ -97,6 +124,8 @@
   let botStatuses = [];
   let authenticated = false;
   let joinVcBotIndex = null;   // currently-open modal target
+  let deleteBotIndex = null;   // currently-targeted bot for deletion
+  let commandPresets = JSON.parse(localStorage.getItem('command_presets')) || ['status', 'ping', 'uptime'];
   const noteTimers = {};       // debounce timers for notes
   let firstStatusLoad = true;
 
@@ -217,7 +246,7 @@
   });
 
   function updateBotGrid(bots) {
-    const filterVal = dom.filterServerId ? dom.filterServerId.value.trim() : '';
+    const filterVal = dom.filterServerId ? dom.filterServerId.value.trim().toLowerCase() : '';
     const filterStatusVal = dom.filterStatus ? dom.filterStatus.value : 'all';
     dom.botCount.textContent = `${bots.length} bot${bots.length !== 1 ? 's' : ''}`;
 
@@ -229,90 +258,132 @@
     }
 
     const existingCards = new Map();
-    dom.botGrid.querySelectorAll('.bot-card[data-bot-index]').forEach(c => {
-      existingCards.set(c.dataset.botIndex, c);
+    dom.botGrid.querySelectorAll('.bot-card[data-bot-config-id]').forEach(c => {
+      existingCards.set(c.dataset.botConfigId, c);
     });
 
-    const seenIndices = new Set();
+    const seenConfigIds = new Set();
+    
+    // Sort bots if show failed first is checked
+    let sortedBots = [...bots];
+    const showFailedFirst = dom.settingShowFailedFirst && dom.settingShowFailedFirst.checked;
+    if (showFailedFirst) {
+      sortedBots.sort((a, b) => {
+        const aFailed = a.loginFailed ? 1 : 0;
+        const bFailed = b.loginFailed ? 1 : 0;
+        return bFailed - aFailed;
+      });
+    }
 
-    bots.forEach(bot => {
-      const key = String(bot.index);
-      seenIndices.add(key);
+    let nextSibling = null;
+    for (let i = sortedBots.length - 1; i >= 0; i--) {
+      const bot = sortedBots[i];
+      const key = bot.configId;
+      seenConfigIds.add(key);
       let card = existingCards.get(key);
 
       if (card) {
-        // In-place update — NO recreating the card element
         updateCardContent(card, bot);
       } else {
-        // New card
         card = document.createElement('div');
         card.className = 'bot-card glass-card new-card';
-        card.dataset.botIndex = key;
+        card.dataset.botConfigId = key;
+        card.dataset.botIndex = String(bot.index);
         card.innerHTML = buildCardInner(bot);
         attachCardListeners(card, bot);
         updateCardContent(card, bot);
-        // Insert before addBotCard
-        dom.botGrid.insertBefore(card, dom.addBotCard);
-        // Remove new-card animation class after it plays
         setTimeout(() => card.classList.remove('new-card'), 450);
       }
 
-      // Optional server ID filter and loaded status filter
+      // In-place updates check to avoid thrashing sorting order
+      if (card.parentElement !== dom.botGrid || card.nextElementSibling !== nextSibling) {
+        dom.botGrid.insertBefore(card, nextSibling);
+      }
+      nextSibling = card;
+
+      // Smart Search filter and Status filter
       let matches = true;
+
+      // Smart Search
       if (filterVal) {
-        if (bot.unloaded) {
-          matches = false;
+        if (filterVal.startsWith('serverid:')) {
+          const targetServerId = filterVal.slice(9).trim();
+          matches = (Array.isArray(bot.guildIds) && bot.guildIds.includes(targetServerId)) || 
+                    (Array.isArray(bot.cachedGuildIds) && bot.cachedGuildIds.includes(targetServerId));
         } else {
-          matches = Array.isArray(bot.guildIds) && bot.guildIds.includes(filterVal);
+          matches = (bot.name && bot.name.toLowerCase().includes(filterVal)) ||
+                    (bot.tag && bot.tag.toLowerCase().includes(filterVal)) ||
+                    (bot.note && bot.note.toLowerCase().includes(filterVal)) ||
+                    (bot.username && bot.username.toLowerCase().includes(filterVal)) ||
+                    (bot.cachedUsername && bot.cachedUsername.toLowerCase().includes(filterVal)) ||
+                    (bot.cachedTag && bot.cachedTag.toLowerCase().includes(filterVal));
         }
       }
-      
+
+      // Status filter
       if (matches) {
         if (filterStatusVal === 'loaded') {
-          matches = !bot.unloaded;
+          matches = !bot.unloaded && bot.ready && !bot.loginFailed;
         } else if (filterStatusVal === 'unloaded') {
           matches = !!bot.unloaded;
+        } else if (filterStatusVal === 'failed') {
+          matches = !!bot.loginFailed;
         }
       }
 
       card.classList.toggle('hidden', !matches);
-    });
+    }
 
     // Remove cards for bots that no longer exist
     existingCards.forEach((card, key) => {
-      if (!seenIndices.has(key)) card.remove();
+      if (!seenConfigIds.has(key)) card.remove();
     });
   }
 
   // ── Render multi-select checkboxes checklist ──
   function updateTargetBotsWidget(bots) {
     const showHidden = dom.showHiddenBots ? dom.showHiddenBots.checked : false;
-    const filterVal = dom.filterServerId ? dom.filterServerId.value.trim() : '';
+    const filterVal = dom.filterServerId ? dom.filterServerId.value.trim().toLowerCase() : '';
     const filterStatusVal = dom.filterStatus ? dom.filterStatus.value : 'all';
-    const currentlyChecked = new Set(
-      Array.from($$('#targetBotsWidget input[type="checkbox"]:checked')).map(cb => cb.value)
+    
+    // Get currently checked configIds instead of indices
+    const currentlyCheckedConfigIds = new Set(
+      Array.from($$('#targetBotsWidget input[type="checkbox"]:checked')).map(cb => cb.dataset.botConfigId)
     );
-    dom.targetBotsWidget.innerHTML = '';
+
     if (bots.length === 0) {
       dom.targetBotsWidget.innerHTML = '<div class="empty-state-sm" style="padding: 10px; font-size: 0.8rem;">No bots loaded</div>';
+      firstStatusLoad = false;
+      updateSliderDisplay();
       return;
     }
 
     const visibleBots = bots.filter(bot => {
-      if (showHidden) return true;
+      const isBotHidden = bot.settings?.hidden === true;
+      if (isBotHidden && !showHidden) return false;
+
       let matches = true;
       if (filterVal) {
-        if (bot.unloaded) {
-          matches = false;
+        if (filterVal.startsWith('serverid:')) {
+          const targetServerId = filterVal.slice(9).trim();
+          matches = (Array.isArray(bot.guildIds) && bot.guildIds.includes(targetServerId)) || 
+                    (Array.isArray(bot.cachedGuildIds) && bot.cachedGuildIds.includes(targetServerId));
         } else {
-          matches = Array.isArray(bot.guildIds) && bot.guildIds.includes(filterVal);
+          matches = (bot.name && bot.name.toLowerCase().includes(filterVal)) ||
+                    (bot.tag && bot.tag.toLowerCase().includes(filterVal)) ||
+                    (bot.note && bot.note.toLowerCase().includes(filterVal)) ||
+                    (bot.username && bot.username.toLowerCase().includes(filterVal)) ||
+                    (bot.cachedUsername && bot.cachedUsername.toLowerCase().includes(filterVal)) ||
+                    (bot.cachedTag && bot.cachedTag.toLowerCase().includes(filterVal));
         }
       }
       if (matches) {
         if (filterStatusVal === 'loaded') {
-          matches = !bot.unloaded;
+          matches = !bot.unloaded && bot.ready && !bot.loginFailed;
         } else if (filterStatusVal === 'unloaded') {
           matches = !!bot.unloaded;
+        } else if (filterStatusVal === 'failed') {
+          matches = !!bot.loginFailed;
         }
       }
       return matches;
@@ -320,20 +391,67 @@
 
     if (visibleBots.length === 0) {
       dom.targetBotsWidget.innerHTML = '<div class="empty-state-sm" style="padding: 10px; font-size: 0.8rem; color: var(--text-muted);">No matching bots</div>';
+      firstStatusLoad = false;
+      updateSliderDisplay();
       return;
     }
 
-    visibleBots.forEach(bot => {
-      const label = document.createElement('label');
-      label.className = 'target-bot-checkbox-label';
-      const isChecked = firstStatusLoad || currentlyChecked.has(String(bot.index));
-      label.innerHTML = `
-        <input type="checkbox" value="${bot.index}" ${isChecked ? 'checked' : ''} />
-        <span>${esc(bot.name || 'Bot')} (${esc(bot.tag || '—')})</span>
-      `;
-      dom.targetBotsWidget.appendChild(label);
+    // Clear empty state element if it exists
+    if (dom.targetBotsWidget.querySelector('.empty-state-sm')) {
+      dom.targetBotsWidget.innerHTML = '';
+    }
+
+    const existingLabels = new Map();
+    dom.targetBotsWidget.querySelectorAll('.target-bot-checkbox-label[data-bot-config-id]').forEach(lbl => {
+      existingLabels.set(lbl.dataset.botConfigId, lbl);
     });
+
+    let nextSibling = null;
+    for (let i = visibleBots.length - 1; i >= 0; i--) {
+      const bot = visibleBots[i];
+      let label = existingLabels.get(bot.configId);
+      const isChecked = firstStatusLoad || currentlyCheckedConfigIds.has(bot.configId);
+      
+      if (label) {
+        // Update checkbox value and dataset
+        const cb = label.querySelector('input[type="checkbox"]');
+        if (cb) {
+          cb.value = bot.index;
+          cb.checked = isChecked;
+        }
+        // Update text
+        const span = label.querySelector('span');
+        if (span) {
+          span.textContent = `${bot.name || 'Bot'} (${bot.tag || '—'})`;
+        }
+      } else {
+        label = document.createElement('label');
+        label.className = 'target-bot-checkbox-label';
+        label.dataset.botConfigId = bot.configId;
+        label.innerHTML = `
+          <input type="checkbox" value="${bot.index}" data-bot-config-id="${bot.configId}" ${isChecked ? 'checked' : ''} />
+          <span>${esc(bot.name || 'Bot')} (${esc(bot.tag || '—')})</span>
+        `;
+      }
+
+      if (label.parentElement !== dom.targetBotsWidget || label.nextElementSibling !== nextSibling) {
+        dom.targetBotsWidget.insertBefore(label, nextSibling);
+      }
+      nextSibling = label;
+    }
+
+    // Remove obsolete labels
+    const visibleConfigIds = new Set(visibleBots.map(b => b.configId));
+    existingLabels.forEach((label, configId) => {
+      if (!visibleConfigIds.has(configId)) {
+        label.remove();
+      }
+    });
+
     firstStatusLoad = false;
+    
+    // Update estimates
+    updateSliderDisplay();
   }
 
   dom.selectAllBotsBtn.addEventListener('click', () => {
@@ -345,7 +463,6 @@
 
   // ── Build card HTML ──
   function buildCardInner(bot) {
-    const isOnline = bot.ready;
     const initials = (bot.name || '?').slice(0, 2).toUpperCase();
     const avatarContent = bot.avatarUrl
       ? `<img src="${escapeAttr(bot.avatarUrl)}" alt="" onerror="this.parentElement.textContent='${initials}'">`
@@ -380,11 +497,24 @@
     const notifyMove = bot.settings?.notifyOnMove !== false;
     const notifyDC = bot.settings?.notifyOnDisconnect !== false;
 
+    let dotClass = 'unloaded';
+    if (bot.disabled) {
+      dotClass = 'disabled';
+    } else if (bot.loginFailed) {
+      dotClass = 'failed';
+    } else if (!bot.unloaded && bot.ready) {
+      dotClass = bot.presenceStatus || 'online';
+    } else if (!bot.unloaded && !bot.ready) {
+      dotClass = 'connecting';
+    }
+
+    const disabledBadgeHTML = bot.disabled ? `<span class="disabled-badge">Disabled</span>` : '';
+
     return `
       <div class="bot-card-header">
         <div class="bot-avatar" data-ref="avatar">${avatarContent}</div>
         <div class="bot-name-group">
-          <div class="bot-name"><span class="bot-status-dot ${isOnline ? 'online' : ''}" data-ref="statusDot"></span><span data-ref="botName">${esc(bot.name || 'Unknown')}</span></div>
+          <div class="bot-name"><span class="bot-status-dot ${dotClass}" data-ref="statusDot"></span><span data-ref="botName">${esc(bot.name || 'Unknown')}</span>${disabledBadgeHTML}</div>
           <div class="bot-tag" data-ref="botTag">${esc(bot.tag || '—')}</div>
         </div>
         <div class="bot-card-actions-top">
@@ -455,6 +585,8 @@
 
   // ── In-place update — only mutate text/classes, don't replace the card ──
   function updateCardContent(card, bot) {
+    card.dataset.botIndex = bot.index;
+    const prevBot = card._botData || {};
     const isOnline = bot.ready;
     card.classList.toggle('online', isOnline);
     card.classList.toggle('unloaded', !!bot.unloaded);
@@ -479,10 +611,47 @@
 
     // Status dot
     const dot = ref('statusDot');
-    if (dot) dot.className = `bot-status-dot ${isOnline ? 'online' : ''}`;
+    if (dot) {
+      let dotClass = 'unloaded';
+      if (bot.disabled) {
+        dotClass = 'disabled';
+      } else if (bot.loginFailed) {
+        dotClass = 'failed';
+      } else if (!bot.unloaded && bot.ready) {
+        dotClass = bot.presenceStatus || 'online';
+      } else if (!bot.unloaded && !bot.ready) {
+        dotClass = 'connecting';
+      }
+      dot.className = `bot-status-dot ${dotClass}`;
+    }
+
+    // Bot name & disabled badge
+    const botNameEl = ref('botName');
+    if (botNameEl) {
+      const nameText = bot.name || 'Unknown';
+      if (botNameEl.textContent !== nameText) {
+        botNameEl.textContent = nameText;
+      }
+      
+      const nameContainer = botNameEl.parentElement;
+      if (nameContainer) {
+        let badge = nameContainer.querySelector('.disabled-badge');
+        if (bot.disabled) {
+          if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'disabled-badge';
+            badge.textContent = 'Disabled';
+            nameContainer.appendChild(badge);
+          }
+        } else {
+          if (badge) {
+            badge.remove();
+          }
+        }
+      }
+    }
 
     // Text fields
-    setText(ref('botName'), bot.name || 'Unknown');
     setText(ref('botTag'), bot.tag || '—');
     setText(ref('servers'), bot.servers != null ? bot.servers.toLocaleString() : '—');
     setText(ref('platform'), bot.platform || bot.platformKey || '—');
@@ -493,12 +662,15 @@
     // Top actions
     const actionsTop = card.querySelector('.bot-card-actions-top');
     if (actionsTop) {
-      actionsTop.innerHTML = bot.unloaded
-        ? `<button class="btn-card-top" data-action="reload" data-tooltip="Load Bot"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>
-           <button class="btn-card-top" data-action="edit" data-tooltip="Edit Credentials"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 113 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>`
-        : `<button class="btn-card-top" data-action="reload" data-tooltip="Reload Bot"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg></button>
-           <button class="btn-card-top" style="color:var(--red);" data-action="unload" data-tooltip="Unload Bot"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg></button>
-           <button class="btn-card-top" data-action="edit" data-tooltip="Edit Credentials"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 113 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>`;
+      const actionsChanged = (prevBot.unloaded !== bot.unloaded) || !actionsTop.innerHTML.trim();
+      if (actionsChanged) {
+        actionsTop.innerHTML = bot.unloaded
+          ? `<button class="btn-card-top" data-action="reload" data-tooltip="Load Bot"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>
+             <button class="btn-card-top" data-action="edit" data-tooltip="Edit Credentials"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 113 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>`
+          : `<button class="btn-card-top" data-action="reload" data-tooltip="Reload Bot"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg></button>
+             <button class="btn-card-top" style="color:var(--red);" data-action="unload" data-tooltip="Unload Bot"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg></button>
+             <button class="btn-card-top" data-action="edit" data-tooltip="Edit Credentials"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 113 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>`;
+      }
     }
 
     // Presence select
@@ -511,23 +683,26 @@
     // Voice block
     const voiceBlock = ref('voiceBlock');
     if (voiceBlock) {
-      if (bot.voice) {
-        const ch = bot.voice.channel || 'Unknown';
-        const gd = bot.voice.guild || '';
-        voiceBlock.innerHTML = `
-          <div class="bot-voice">
-            <div class="bot-voice-label">Voice</div>
-            <div class="bot-voice-value">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 010 7.07"/></svg>
-              ${esc(ch)}${gd ? ` <span style="color:var(--text-muted)">· ${esc(gd)}</span>` : ''}
-            </div>
-            <div class="voice-indicators">
-              <span class="voice-indicator ${bot.voice.muted ? 'active' : 'inactive'}">Muted</span>
-              <span class="voice-indicator ${bot.voice.deafened ? 'active' : 'inactive'}">Deafened</span>
-            </div>
-          </div>`;
-      } else {
-        voiceBlock.innerHTML = `<div class="bot-voice"><div class="bot-voice-label">Voice</div><div class="bot-voice-value" style="color:var(--text-muted)">Not connected</div></div>`;
+      const voiceChanged = JSON.stringify(prevBot.voice) !== JSON.stringify(bot.voice) || !voiceBlock.innerHTML.trim();
+      if (voiceChanged) {
+        if (bot.voice) {
+          const ch = bot.voice.channel || 'Unknown';
+          const gd = bot.voice.guild || '';
+          voiceBlock.innerHTML = `
+            <div class="bot-voice">
+              <div class="bot-voice-label">Voice</div>
+              <div class="bot-voice-value">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 010 7.07"/></svg>
+                ${esc(ch)}${gd ? ` <span style="color:var(--text-muted)">· ${esc(gd)}</span>` : ''}
+              </div>
+              <div class="voice-indicators">
+                <span class="voice-indicator ${bot.voice.muted ? 'active' : 'inactive'}">Muted</span>
+                <span class="voice-indicator ${bot.voice.deafened ? 'active' : 'inactive'}">Deafened</span>
+              </div>
+            </div>`;
+        } else {
+          voiceBlock.innerHTML = `<div class="bot-voice"><div class="bot-voice-label">Voice</div><div class="bot-voice-value" style="color:var(--text-muted)">Not connected</div></div>`;
+        }
       }
     }
 
@@ -580,7 +755,6 @@
   // ── Attach event listeners to a NEW card ──
   function attachCardListeners(card, bot) {
     card._botData = bot;
-    const idx = bot.index;
 
     // Inline input field helper
     const inp = card.querySelector('[data-ref="statusInput"]');
@@ -611,41 +785,45 @@
       if (!actionBtn) return;
       const action = actionBtn.dataset.action;
       const current = card._botData;
+      const dynamicIdx = current.index;
 
       switch (action) {
         case 'reload':
-          socket.emit('reloadBot', { botIndex: idx });
+          socket.emit('reloadBot', { botIndex: dynamicIdx });
           break;
         case 'unload':
-          socket.emit('unloadBot', { botIndex: idx });
+          socket.emit('unloadBot', { botIndex: dynamicIdx });
           break;
         case 'edit':
           openEditBotModal(current);
+          break;
+        case 'delete':
+          openConfirmDeleteModal(current);
           break;
         case 'joinvc':
           openJoinVcModal(current);
           break;
         case 'leave':
-          socket.emit('executeCommand', { botIndex: idx, command: 'leave vc' });
+          socket.emit('executeCommand', { botIndex: dynamicIdx, command: 'leave vc' });
           break;
         case 'togglemute': {
           const cmd = current.voice?.muted ? 'unmute' : 'mute';
-          socket.emit('executeCommand', { botIndex: idx, command: cmd });
+          socket.emit('executeCommand', { botIndex: dynamicIdx, command: cmd });
           break;
         }
         case 'toggledeafen': {
           const cmd = current.voice?.deafened ? 'undeafen' : 'deafen';
-          socket.emit('executeCommand', { botIndex: idx, command: cmd });
+          socket.emit('executeCommand', { botIndex: dynamicIdx, command: cmd });
           break;
         }
         case 'setstatus':
           openInlineInput('Custom status text…', (val) => {
-            socket.emit('executeCommand', { botIndex: idx, command: `set status ${val}` });
+            socket.emit('executeCommand', { botIndex: dynamicIdx, command: `set status ${val}` });
           });
           break;
         case 'leaveserver':
           openInlineInput('Server ID to leave…', (val) => {
-            socket.emit('executeCommand', { botIndex: idx, command: `leave ${val}` });
+            socket.emit('executeCommand', { botIndex: dynamicIdx, command: `leave ${val}` });
           });
           break;
       }
@@ -658,12 +836,9 @@
     const presenceSelect = card.querySelector('[data-action="setpresence"]');
     if (presenceSelect) {
       presenceSelect.addEventListener('change', () => {
-        socket.emit('executeCommand', { botIndex: idx, command: `set presence ${presenceSelect.value}` });
+        socket.emit('executeCommand', { botIndex: card._botData.index, command: `set presence ${presenceSelect.value}` });
       });
     }
-
-
-
 
     // Note toggle
     const noteToggle = card.querySelector('[data-ref="noteToggle"]');
@@ -680,9 +855,10 @@
     const noteSaved = card.querySelector('[data-ref="noteSaved"]');
     if (noteArea) {
       noteArea.addEventListener('input', () => {
-        clearTimeout(noteTimers[idx]);
-        noteTimers[idx] = setTimeout(() => {
-          socket.emit('updateBotNote', { botIndex: idx, note: noteArea.value });
+        const dynamicIdx = card._botData.index;
+        clearTimeout(noteTimers[dynamicIdx]);
+        noteTimers[dynamicIdx] = setTimeout(() => {
+          socket.emit('updateBotNote', { botIndex: dynamicIdx, note: noteArea.value });
           if (noteSaved) { noteSaved.classList.add('show'); setTimeout(() => noteSaved.classList.remove('show'), 1500); }
           const preview = card.querySelector('[data-ref="notePreview"]');
           if (preview) preview.textContent = noteArea.value;
@@ -703,7 +879,7 @@
     // Setting checkboxes
     card.querySelectorAll('[data-setting]').forEach(cb => {
       cb.addEventListener('change', () => {
-        socket.emit('updateBotSettings', { botIndex: idx, key: cb.dataset.setting, value: cb.checked });
+        socket.emit('updateBotSettings', { botIndex: card._botData.index, key: cb.dataset.setting, value: cb.checked });
       });
     });
   }
@@ -825,6 +1001,15 @@
     dom.editBotToken.value = ''; // Empty to keep token masked
     dom.editBotPlatform.value = bot.platformKey || 'desktop';
     dom.editBotReload.checked = true;
+    dom.editBotDisabled.checked = !!bot.disabled;
+    
+    if (dom.editBotRemoveBtn) {
+      dom.editBotRemoveBtn.onclick = () => {
+        closeModal(dom.editBotModal);
+        openConfirmDeleteModal(bot);
+      };
+    }
+    
     dom.editBotModal.classList.add('open');
   }
 
@@ -834,6 +1019,7 @@
     const token = dom.editBotToken.value.trim();
     const platform = dom.editBotPlatform.value;
     const reload = dom.editBotReload.checked;
+    const disabled = dom.editBotDisabled.checked;
 
     if (isNaN(botIndex)) return;
 
@@ -842,7 +1028,8 @@
       name: name || undefined,
       token: token || undefined,
       platform,
-      reload
+      reload,
+      disabled
     });
     closeModal(dom.editBotModal);
   });
@@ -853,36 +1040,92 @@
   // ══════════════════════════════════════════
   //  ADD BOT MODAL
   // ══════════════════════════════════════════
-  dom.addBotCard.addEventListener('click', () => {
-    dom.addBotModal.classList.add('open');
-    dom.addBotName.value = '';
-    dom.addBotToken.value = '';
-    dom.addBotPlatform.value = 'desktop';
-  });
+  // ══════════════════════════════════════════
+  //  FLOATING ADD BOT FAB
+  // ══════════════════════════════════════════
+  if (dom.addBotFabBtn) {
+    dom.addBotFabBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      dom.addBotFabContainer.classList.toggle('expanded');
+      if (dom.addBotFabContainer.classList.contains('expanded')) {
+        dom.fabBotName.value = '';
+        dom.fabBotToken.value = '';
+        dom.fabBotPlatform.value = 'desktop';
+        if (dom.fabBotDisabled) dom.fabBotDisabled.checked = false;
+        dom.fabBotName.focus();
+      }
+    });
+  }
 
-  dom.addBotSubmitBtn.addEventListener('click', () => {
-    const name = dom.addBotName.value.trim();
-    const token = dom.addBotToken.value.trim();
-    const platform = dom.addBotPlatform.value;
-    if (!name || !token) return;
-    socket.emit('addBot', { name, token, platform });
-    closeModal(dom.addBotModal);
-  });
+  if (dom.addBotFabContainer) {
+    dom.addBotFabContainer.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+  }
 
-  dom.addBotClose.addEventListener('click', () => closeModal(dom.addBotModal));
-  dom.addBotCancelBtn.addEventListener('click', () => closeModal(dom.addBotModal));
+  if (dom.fabBotSubmitBtn) {
+    dom.fabBotSubmitBtn.addEventListener('click', () => {
+      const name = dom.fabBotName.value.trim();
+      const token = dom.fabBotToken.value.trim();
+      const platform = dom.fabBotPlatform.value;
+      const disabled = dom.fabBotDisabled.checked;
+      if (!name || !token) {
+        showToast('warning', 'Add Bot', 'Name and Token are required.');
+        return;
+      }
+      socket.emit('addBot', { name, token, platform, disabled });
+      dom.fabBotName.value = '';
+      dom.fabBotToken.value = '';
+      if (dom.fabBotDisabled) dom.fabBotDisabled.checked = false;
+      dom.addBotFabContainer.classList.remove('expanded');
+    });
+  }
+
+  // ══════════════════════════════════════════
+  //  CONFIRM DELETE MODAL
+  // ══════════════════════════════════════════
+  function openConfirmDeleteModal(bot) {
+    deleteBotIndex = bot.index;
+    if (dom.deleteBotName) dom.deleteBotName.textContent = bot.name || 'this bot';
+    if (dom.confirmDeleteModal) dom.confirmDeleteModal.classList.add('open');
+  }
+
+  if (dom.confirmDeleteConfirmBtn) {
+    dom.confirmDeleteConfirmBtn.addEventListener('click', () => {
+      if (deleteBotIndex !== null) {
+        socket.emit('removeBot', { botIndex: deleteBotIndex });
+        closeModal(dom.confirmDeleteModal);
+        deleteBotIndex = null;
+      }
+    });
+  }
+
+  if (dom.confirmDeleteClose) {
+    dom.confirmDeleteClose.addEventListener('click', () => closeModal(dom.confirmDeleteModal));
+  }
+  if (dom.confirmDeleteCancelBtn) {
+    dom.confirmDeleteCancelBtn.addEventListener('click', () => closeModal(dom.confirmDeleteModal));
+  }
 
   // ── Close modal helper ──
   function closeModal(overlay) {
-    overlay.classList.remove('open');
+    if (overlay) overlay.classList.remove('open');
     joinVcBotIndex = null;
   }
 
   // Click outside to close
-  [dom.joinVcModal, dom.addBotModal, dom.editBotModal].forEach(overlay => {
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) closeModal(overlay);
-    });
+  [dom.joinVcModal, dom.editBotModal, dom.confirmDeleteModal].forEach(overlay => {
+    if (overlay) {
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closeModal(overlay);
+      });
+    }
+  });
+
+  document.addEventListener('click', () => {
+    if (dom.addBotFabContainer) {
+      dom.addBotFabContainer.classList.remove('expanded');
+    }
   });
 
   // ══════════════════════════════════════════
@@ -903,7 +1146,9 @@
       `[${data.bot ?? '?'}] ${data.result || (data.success ? 'OK' : 'Failed')}`,
       data.success
     );
-    if (dom.settingNotifyCommand && dom.settingNotifyCommand.checked) {
+    if (data.command === 'Remove bot' && data.success) {
+      showToast('success', 'Bot deleted successfully', 'All associated data has been permanently removed.');
+    } else if (dom.settingNotifyCommand && dom.settingNotifyCommand.checked) {
       const type = data.success ? 'success' : 'warning';
       showToast(type, data.command || 'Command Result', `[${data.bot ?? '?'}] ${data.result || (data.success ? 'OK' : 'Failed')}`);
     }
@@ -934,7 +1179,14 @@
     const userId = dom.massDmUserId.value.trim();
     const message = dom.massDmMessage.value.trim();
     const deleteAfter = dom.massDmDeleteCheck.checked;
-    const delay = dom.massDmDelayInput.value.trim() || '2-5';
+    
+    let delay = '10';
+    if (dom.massDmDelayMinSlider && dom.massDmDelayMaxSlider) {
+      const minVal = parseInt(dom.massDmDelayMinSlider.value, 10);
+      const maxVal = parseInt(dom.massDmDelayMaxSlider.value, 10);
+      delay = `${minVal}-${maxVal}`;
+    }
+
     if (botIndices.length === 0) { flashResult('Select at least one bot for Mass DM', false); return; }
     if (!userId || !message) { flashResult('User ID and message content are required', false); return; }
     socket.emit('massDm', { botIndices, userId, message, deleteAfter, delay });
@@ -1127,7 +1379,7 @@
   }
 
   // ── Toast Notification System ──
-  function showToast(type, title, body, duration = 5000) {
+  function showToast(type, title, body, duration = null) {
     const enabled = dom.settingNotifyEnabled ? dom.settingNotifyEnabled.checked : true;
     if (!enabled) return;
 
@@ -1145,25 +1397,225 @@
       loading: 'Loading'
     };
     const prefix = prefixMap[type] || 'Info';
-    const message = body ? `${title}. ${body}` : title;
 
-    toast.innerHTML = `<strong>${prefix}:</strong> ${esc(message)}`;
+    const titleText = title ? ` ${esc(title)}` : '';
+    const bodyText = body ? `. ${esc(body)}` : '';
+    toast.innerHTML = `<strong>${prefix}:</strong>${titleText}${bodyText}`;
 
-    toast.addEventListener('click', () => {
-      toast.classList.add('fade-out');
-      setTimeout(() => toast.remove(), 300);
-    });
+    const dismiss = () => {
+      if (toast.parentElement) {
+        toast.classList.add('fade-out');
+        setTimeout(() => toast.remove(), 300);
+      }
+    };
+
+    toast.addEventListener('click', dismiss);
 
     container.appendChild(toast);
 
-    if (duration > 0) {
-      setTimeout(() => {
-        if (toast.parentElement) {
-          toast.classList.add('fade-out');
-          setTimeout(() => toast.remove(), 300);
-        }
-      }, duration);
+    if (duration === null) {
+      if (dom.settingNotifyTimeout) {
+        duration = parseInt(dom.settingNotifyTimeout.value, 10);
+      } else {
+        duration = 5000;
+      }
     }
+
+    if (duration > 0) {
+      let remaining = duration;
+      let startTime = Date.now();
+      let timer = setTimeout(dismiss, remaining);
+
+      const holdEnabled = dom.settingNotifyHoldOnHover ? dom.settingNotifyHoldOnHover.checked : true;
+      if (holdEnabled) {
+        toast.addEventListener('mouseenter', () => {
+          clearTimeout(timer);
+          const elapsed = Date.now() - startTime;
+          remaining = Math.max(0, remaining - elapsed);
+        });
+
+        toast.addEventListener('mouseleave', () => {
+          if (remaining > 0) {
+            startTime = Date.now();
+            timer = setTimeout(dismiss, remaining);
+          } else {
+            dismiss();
+          }
+        });
+      }
+    }
+  }
+
+  // ── Custom Slider Utility ──
+  function updateSliderDisplay() {
+    const minSlider = dom.massDmDelayMinSlider;
+    const maxSlider = dom.massDmDelayMaxSlider;
+    if (!minSlider || !maxSlider) return;
+
+    let minVal = parseInt(minSlider.value, 10);
+    let maxVal = parseInt(maxSlider.value, 10);
+
+    // Enforce min <= max
+    if (minVal > maxVal) {
+      if (document.activeElement === minSlider) {
+        minSlider.value = maxVal;
+        minVal = maxVal;
+      } else {
+        maxSlider.value = minVal;
+        maxVal = minVal;
+      }
+    }
+
+    const minLimit = parseInt(minSlider.min, 10) || 1;
+    const maxLimit = parseInt(minSlider.max, 10) || 60;
+
+    const minPercent = ((minVal - minLimit) / (maxLimit - minLimit)) * 100;
+    const maxPercent = ((maxVal - minLimit) / (maxLimit - minLimit)) * 100;
+
+    // Track Fill should color strictly between min and max handles
+    if (dom.sliderTrackFill) {
+      dom.sliderTrackFill.style.left = `calc(${minPercent}% + 0px)`;
+      dom.sliderTrackFill.style.width = `calc(${maxPercent - minPercent}%)`;
+    }
+
+    if (dom.sliderMinVal) {
+      dom.sliderMinVal.textContent = minVal;
+    }
+    if (dom.sliderMaxVal) {
+      dom.sliderMaxVal.textContent = maxVal;
+    }
+
+    if (dom.sliderThumbMinLabel) {
+      dom.sliderThumbMinLabel.style.left = `calc(${minPercent}% - 12px)`;
+    }
+    if (dom.sliderThumbMaxLabel) {
+      dom.sliderThumbMaxLabel.style.left = `calc(${maxPercent}% - 12px)`;
+    }
+
+    // Broadcast runtime estimate: average delay of both inputs
+    const selectedCount = getSelectedBotIndices().length;
+    const avgDelay = (minVal + maxVal) / 2;
+    const totalSec = avgDelay * selectedCount;
+    const estimateMins = Math.ceil(totalSec / 60);
+    if (dom.sliderEstimate) {
+      dom.sliderEstimate.textContent = `~${estimateMins}m`;
+    }
+  }
+
+  if (dom.massDmDelayMinSlider && dom.massDmDelayMaxSlider) {
+    dom.massDmDelayMinSlider.addEventListener('input', updateSliderDisplay);
+    dom.massDmDelayMaxSlider.addEventListener('input', updateSliderDisplay);
+
+    const handleZIndex = (e) => {
+      if (e.target === dom.massDmDelayMinSlider) {
+        dom.massDmDelayMinSlider.style.zIndex = '3';
+        dom.massDmDelayMaxSlider.style.zIndex = '2';
+      } else {
+        dom.massDmDelayMinSlider.style.zIndex = '2';
+        dom.massDmDelayMaxSlider.style.zIndex = '3';
+      }
+    };
+    dom.massDmDelayMinSlider.addEventListener('mousedown', handleZIndex);
+    dom.massDmDelayMaxSlider.addEventListener('mousedown', handleZIndex);
+    dom.massDmDelayMinSlider.addEventListener('touchstart', handleZIndex);
+    dom.massDmDelayMaxSlider.addEventListener('touchstart', handleZIndex);
+  }
+
+  // ── Command Presets Utility ──
+  function renderPresetChips() {
+    if (!dom.presetChips) return;
+    dom.presetChips.innerHTML = '';
+    if (commandPresets.length === 0) {
+      dom.presetChips.innerHTML = '<span style="font-size:0.75rem; color:var(--text-muted);">No presets saved</span>';
+      return;
+    }
+    commandPresets.forEach((cmd, idx) => {
+      const chip = document.createElement('div');
+      chip.className = 'preset-chip';
+      chip.innerHTML = `
+        <span class="preset-cmd-text">${esc(cmd)}</span>
+        <span class="preset-delete" data-idx="${idx}">&times;</span>
+      `;
+
+      chip.addEventListener('click', (e) => {
+        if (e.target.classList.contains('preset-delete')) {
+          e.stopPropagation();
+          const removeIdx = parseInt(e.target.dataset.idx, 10);
+          commandPresets.splice(removeIdx, 1);
+          localStorage.setItem('command_presets', JSON.stringify(commandPresets));
+          renderPresetChips();
+          return;
+        }
+
+        if (e.shiftKey) {
+          if (dom.commandInput) {
+            dom.commandInput.value = cmd;
+            dom.commandInput.focus();
+          }
+        } else {
+          const botIndices = getSelectedBotIndices();
+          if (botIndices.length === 0) {
+            flashResult('Select at least one bot first', false);
+            return;
+          }
+          socket.emit('massCommand', { botIndices, command: cmd });
+        }
+      });
+
+      dom.presetChips.appendChild(chip);
+    });
+  }
+
+  if (dom.addPresetBtn && dom.newPresetInput) {
+    dom.addPresetBtn.addEventListener('click', () => {
+      const text = dom.newPresetInput.value.trim();
+      if (!text) return;
+      if (!commandPresets.includes(text)) {
+        commandPresets.push(text);
+        localStorage.setItem('command_presets', JSON.stringify(commandPresets));
+        renderPresetChips();
+      }
+      dom.newPresetInput.value = '';
+    });
+
+    dom.newPresetInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        dom.addPresetBtn.click();
+      }
+    });
+  }
+
+  // ── Branding Settings Utility ──
+  function updateBrandText() {
+    const title = localStorage.getItem('brand_title') || 'BotHub';
+    const subtitle = localStorage.getItem('brand_subtitle') || 'Discord Self-Bot';
+
+    const titleEl = $('.brand-title');
+    const subtitleEl = $('.brand-subtitle');
+    if (titleEl) titleEl.textContent = title;
+    if (subtitleEl) subtitleEl.textContent = subtitle;
+
+    document.title = title;
+
+    if (dom.settingBrandTitle && document.activeElement !== dom.settingBrandTitle) {
+      dom.settingBrandTitle.value = title;
+    }
+    if (dom.settingBrandSubtitle && document.activeElement !== dom.settingBrandSubtitle) {
+      dom.settingBrandSubtitle.value = subtitle;
+    }
+  }
+
+  if (dom.settingBrandTitle) {
+    dom.settingBrandTitle.addEventListener('input', () => {
+      localStorage.setItem('brand_title', dom.settingBrandTitle.value.trim() || 'BotHub');
+      updateBrandText();
+    });
+  }
+  if (dom.settingBrandSubtitle) {
+    dom.settingBrandSubtitle.addEventListener('input', () => {
+      localStorage.setItem('brand_subtitle', dom.settingBrandSubtitle.value.trim() || 'Discord Self-Bot');
+      updateBrandText();
+    });
   }
 
   // Load App Settings from LocalStorage
@@ -1186,6 +1638,35 @@
         });
       }
     }
+
+    if (dom.settingNotifyTimeout) {
+      const savedTimeout = localStorage.getItem('settingNotifyTimeout') || '5000';
+      dom.settingNotifyTimeout.value = savedTimeout;
+      dom.settingNotifyTimeout.addEventListener('change', () => {
+        localStorage.setItem('settingNotifyTimeout', dom.settingNotifyTimeout.value);
+      });
+    }
+
+    if (dom.settingNotifyHoldOnHover) {
+      const savedHold = localStorage.getItem('settingNotifyHoldOnHover') !== 'false';
+      dom.settingNotifyHoldOnHover.checked = savedHold;
+      dom.settingNotifyHoldOnHover.addEventListener('change', () => {
+        localStorage.setItem('settingNotifyHoldOnHover', dom.settingNotifyHoldOnHover.checked);
+      });
+    }
+
+    if (dom.settingShowFailedFirst) {
+      const showFailedVal = localStorage.getItem('settingShowFailedFirst') === 'true';
+      dom.settingShowFailedFirst.checked = showFailedVal;
+      dom.settingShowFailedFirst.addEventListener('change', () => {
+        localStorage.setItem('settingShowFailedFirst', dom.settingShowFailedFirst.checked);
+        updateBotGrid(botStatuses);
+      });
+    }
+
+    updateBrandText();
+    renderPresetChips();
+    updateSliderDisplay();
   }
 
   // ══════════════════════════════════════════
